@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="stage-test-suite.xml"/>
+
+    <!-- ===================== PUT /applications/{id}/stage ===================== -->
+    <munit:test name="stage-change-succeeds" description="Found and updated returns the from and to stage">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Update stage"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 1, updated: 1, current_stage: 'RECEIVED'}]]" mediaType="application/java"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#['{&quot;toStage&quot;:&quot;VERIFYING&quot;,&quot;sourceApp&quot;:&quot;loan-document-proc&quot;,&quot;correlationId&quot;:&quot;22222222-2222-4222-8222-222222222222&quot;,&quot;expectedFromStage&quot;:&quot;RECEIVED&quot;,&quot;detail&quot;:{&quot;missing&quot;:[&quot;PAYSLIP&quot;]}}']" mediaType="application/json"/>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="put:\applications\(applicationId)\stage:application\json:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000001')]"/>
+            <munit-tools:assert-that expression="#[payload.fromStage]" is="#[MunitTools::equalTo('RECEIVED')]"/>
+            <munit-tools:assert-that expression="#[payload.toStage]" is="#[MunitTools::equalTo('VERIFYING')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="stage-change-unknown-application-is-not-found" description="No row found raises APP:NOT_FOUND" expectedErrorType="APP:NOT_FOUND">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Update stage"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 0, updated: 0, current_stage: null}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#[{toStage: 'VERIFYING', sourceApp: 'x', correlationId: '22222222-2222-4222-8222-222222222222'}]"/>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="put:\applications\(applicationId)\stage:application\json:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="stage-change-wrong-expected-stage-conflicts" description="Stage differs from expectedFromStage raises APP:CONFLICT" expectedErrorType="APP:CONFLICT">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Update stage"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 1, updated: 0, current_stage: 'VERIFYING'}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#[{toStage: 'VERIFIED', sourceApp: 'x', correlationId: '22222222-2222-4222-8222-222222222222', expectedFromStage: 'RECEIVED'}]"/>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="put:\applications\(applicationId)\stage:application\json:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <!-- ===================== POST /applications/{id}/resubmit ===================== -->
+    <munit:test name="resubmit-from-incomplete-succeeds" description="Allowed resubmit returns 202, VERIFYING and the new round">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Resubmit application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 1, updated: 1, current_stage: 'DOCUMENTS_INCOMPLETE', verification_round: 2}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\applications\(applicationId)\resubmit:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('202')]"/>
+            <munit-tools:assert-that expression="#[payload.stage]" is="#[MunitTools::equalTo('VERIFYING')]"/>
+            <munit-tools:assert-that expression="#[payload.verificationRound]" is="#[MunitTools::equalTo(2)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="resubmit-from-other-stage-conflicts" description="Any stage other than DOCUMENTS_INCOMPLETE is a 409" expectedErrorType="APP:CONFLICT">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Resubmit application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 1, updated: 0, current_stage: 'VERIFYING', verification_round: null}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\applications\(applicationId)\resubmit:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="resubmit-unknown-application-is-not-found" description="Unknown id is a 404" expectedErrorType="APP:NOT_FOUND">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Resubmit application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 0, updated: 0, current_stage: null, verification_round: null}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\applications\(applicationId)\resubmit:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+</mule>

@@ -164,10 +164,11 @@ sequenceDiagram
 - Underwriting digest scheduler for REFERRED applications with age and amount.
 - Batch job for the outbox sweep; Anypoint Monitoring alerts on DLQ depth and unnotified decisions.
 
-### 4.5 loan-system-api (system) [built: foundation, create and read]
+### 4.5 loan-system-api (system) [built: foundation, application, stage, resubmit, outbox, dedupe, audit]
 - RAML contract with about 25 business-level operations; only this app opens JDBC connections.
-- **Built and live-verified:** `GET /health`, `POST /applications`, `GET /applications/{id}`; global error handler; encrypted secrets; 14 MUnit tests.
-- **Designed:** stage change (with expected-stage guard), resubmit (only from `DOCUMENTS_INCOMPLETE`, one concurrent winner), outbox endpoints, processed-message claim, audit append/read, document inventory, decision save, notifications, bureau mock + on/off switch, products, scorecard.
+- **Built:** `GET /health`, `POST /applications`, `GET /applications/{id}`, `PUT /applications/{id}/stage` (expected-stage guard, row lock, audit and optional outbox message in one statement), `POST /applications/{id}/resubmit` (only from `DOCUMENTS_INCOMPLETE`, one concurrent winner), `GET /outbox/pending`, `POST /outbox/{id}/sent`, `POST /outbox/{id}/failed`, `POST /processed-messages` (claim) and `DELETE /processed-messages/{consumer}/{messageId}` (release), `POST /audit/events`, `GET /applications/{id}/audit`; global error handler; encrypted secrets; 32 MUnit tests.
+- **Designed:** document inventory, decision save, notifications, bureau mock + on/off switch, products, document rules, scorecard, application list.
+- Outbox delivery is at least once; every consumer dedupes by `messageId` through the claim. A consumer releases its claim after a technical failure so a redelivery is not skipped.
 
 ## 5. Messaging design
 
@@ -278,3 +279,4 @@ Constraint: the trial has 1 vCore in Sandbox and no VPC, so everything uses publ
 | Date | Change |
 |---|---|
 | 2026-11-04 | v0.1 draft: architecture, lifecycle, components, data, cross-cutting design |
+| 2026-11-05 | v0.2: system API now includes stage change, resubmit, outbox, processed-message claim and release, audit append and read |

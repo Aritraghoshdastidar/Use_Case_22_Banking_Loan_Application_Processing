@@ -26,6 +26,8 @@ cd loan-system-api
 ..\scripts\mvn.ps1 clean test               # MUnit tests
 # Run the app from the IDE (project folder opened as its own workspace root), then:
 curl.exe http://localhost:8701/api/health   # {"status":"UP","database":"UP"}
+cd ..
+powershell -File scripts\smoke-system-api.ps1  # live check of every system API operation
 ```
 
 | UI | URL | Login |

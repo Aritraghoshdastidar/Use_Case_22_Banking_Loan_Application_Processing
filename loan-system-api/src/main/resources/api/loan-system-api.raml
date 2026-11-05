@@ -307,6 +307,13 @@ types:
       201:
       409:
         body: { type: Error }
+  /{consumer}/{messageId}:
+    delete:
+      description: |
+        Releases a claim. A consumer calls this when processing failed technically, so that a redelivered message is
+        processed again instead of being skipped as a duplicate. Idempotent: releasing an unknown claim is fine.
+      responses:
+        204:
 
 /notifications:
   post:
