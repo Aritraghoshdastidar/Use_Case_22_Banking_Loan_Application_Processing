@@ -18,7 +18,7 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
 			</http:error-response>
 		</http:listener>
-		<logger level="INFO" doc:name="Logger" category="com.loan.system.main" message="#['request ' ++ attributes.method ++ ' ' ++ attributes.requestPath ++ ' correlationId=' ++ correlationId]" />
+		<logger level="INFO" doc:name="Logger" category="com.loan.system.main" message="#['request ' ++ attributes.method ++ ' ' ++ (attributes.requestPath replace /[A-Z]{5}[0-9]{4}[A-Z]/ with '[masked]') ++ ' correlationId=' ++ correlationId]" />
 		<apikit:router doc:name="APIkit Router" config-ref="loan-system-api-config" />
 	</flow>
 	<flow name="get:\health:loan-system-api-config">

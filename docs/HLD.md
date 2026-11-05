@@ -164,11 +164,15 @@ sequenceDiagram
 - Underwriting digest scheduler for REFERRED applications with age and amount.
 - Batch job for the outbox sweep; Anypoint Monitoring alerts on DLQ depth and unnotified decisions.
 
-### 4.5 loan-system-api (system) [built: foundation, application, stage, resubmit, outbox, dedupe, audit]
-- RAML contract with about 25 business-level operations; only this app opens JDBC connections.
-- **Built:** `GET /health`, `POST /applications`, `GET /applications/{id}`, `PUT /applications/{id}/stage` (expected-stage guard, row lock, audit and optional outbox message in one statement), `POST /applications/{id}/resubmit` (only from `DOCUMENTS_INCOMPLETE`, one concurrent winner), `GET /outbox/pending`, `POST /outbox/{id}/sent`, `POST /outbox/{id}/failed`, `POST /processed-messages` (claim) and `DELETE /processed-messages/{consumer}/{messageId}` (release), `POST /audit/events`, `GET /applications/{id}/audit`; global error handler; encrypted secrets; 32 MUnit tests.
-- **Designed:** document inventory, decision save, notifications, bureau mock + on/off switch, products, document rules, scorecard, application list.
+### 4.5 loan-system-api (system) [built: complete]
+- RAML contract with about 30 business-level operations; only this app opens JDBC connections.
+- **Applications:** `POST /applications` (application, outbox message and audit row in one statement, idempotent on request id), `GET /applications/{id}`, `GET /applications?stage=&limit=` (for the underwriting digest), `PUT /applications/{id}/stage` (expected-stage guard, row lock, audit and optional outbox message in one statement), `POST /applications/{id}/resubmit` (only from `DOCUMENTS_INCOMPLETE`, one concurrent winner), `PUT /applications/{id}/documents` (transactional upsert of the inventory), `POST /applications/{id}/decision` (decision, rule hits, stage change, audit row and `DECISION_READY` outbox message in one transaction; a repeat changes nothing), `GET /applications/{id}/audit`.
+- **Reliability:** `GET /outbox/pending`, `POST /outbox/{id}/sent`, `POST /outbox/{id}/failed`, `POST /processed-messages` (claim) and `DELETE /processed-messages/{consumer}/{messageId}` (release), `POST /audit/events`.
+- **Reference data and mocks:** `GET /products/{code}`, `GET /products/{code}/document-rules`, `GET /scorecards/active`, `GET /bureau/reports/{identityRef}` (503 while the switch is off, 404 for an applicant without history), `GET` and `PUT /bureau/switch`.
+- **Notifications:** `POST /notifications` (one row per application, template and round), `PUT /notifications/{id}`, `GET /notifications` (unnotified rows with their age).
+- Global error handler, encrypted secrets, request log with identity numbers masked, UTC timestamps; 57 MUnit tests (91.5% coverage) and a live smoke script with 77 checks.
 - Outbox delivery is at least once; every consumer dedupes by `messageId` through the claim. A consumer releases its claim after a technical failure so a redelivery is not skipped.
+- The bureau mock takes the identity number in the URL path for simplicity; the request log masks it. A real bureau integration would use a request body instead.
 
 ## 5. Messaging design
 
@@ -280,3 +284,4 @@ Constraint: the trial has 1 vCore in Sandbox and no VPC, so everything uses publ
 |---|---|
 | 2026-11-04 | v0.1 draft: architecture, lifecycle, components, data, cross-cutting design |
 | 2026-11-05 | v0.2: system API now includes stage change, resubmit, outbox, processed-message claim and release, audit append and read |
+| 2026-11-05 | v0.3: system API complete: products, document rules, scorecard, document inventory, decision save, bureau mock and switch, notifications, application list |

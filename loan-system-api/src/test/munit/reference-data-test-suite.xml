@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="reference-data-test-suite.xml" />
+	<munit:test name="get-product-returns-limits" description="Known product returns its limits">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{code: 'PL', name: 'Personal loan', min_amount: 50000, max_amount: 1000000, min_tenure_months: 6, max_tenure_months: 60, annual_rate_pct: 12.00, active: true}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {code: 'PL'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\products\(code):loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('PL')]" />
+			<munit-tools:assert-that expression="#[payload.maxAmount]" is="#[MunitTools::equalTo(1000000)]" />
+			<munit-tools:assert-that expression="#[payload.active]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="get-product-unknown-is-not-found" description="Unknown product code is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {code: 'XX'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\products\(code):loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="get-document-rules-returns-checklist" description="Rules come back with extension and type lists split into arrays">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Check product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{code: 'PL'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{doc_type: 'PAYSLIP', description: 'Recent payslip', required_count: 2, max_size_bytes: 2097152, allowed_extensions: 'pdf', allowed_mime_types: 'application/pdf'}, {doc_type: 'ID_PROOF', description: 'Identity', required_count: 1, max_size_bytes: 5242880, allowed_extensions: 'pdf,jpg,png', allowed_mime_types: 'application/pdf,image/jpeg,image/png'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {code: 'PL'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\products\(code)\document-rules:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.productCode]" is="#[MunitTools::equalTo('PL')]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.rules)]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.rules[0].requiredCount]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.rules[1].allowedExtensions)]" is="#[MunitTools::equalTo(3)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="get-document-rules-unknown-product-is-not-found" description="Unknown product is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Check product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {code: 'XX'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\products\(code)\document-rules:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="get-active-scorecard-returns-factors" description="Active scorecard comes back with its factors">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get active scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{version: 'SC-1.0', approve_min_score: 70, refer_min_score: 50, offer_validity_days: 30}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard factors" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{factor: 'BUREAU_SCORE', weight: 35, zero_points_at: 600, full_points_at: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zero_points_at: 0.60, full_points_at: 0.30}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\scorecards\active:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.version]" is="#[MunitTools::equalTo('SC-1.0')]" />
+			<munit-tools:assert-that expression="#[payload.offerValidityDays]" is="#[MunitTools::equalTo(30)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.factors)]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.factors[0].factor]" is="#[MunitTools::equalTo('BUREAU_SCORE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="get-active-scorecard-none-is-not-found" description="No active scorecard is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get active scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\scorecards\active:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="list-applications-returns-age-and-amount" description="List gives id, amount and age for the digest">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get applications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{application_id: 'APP-2026-000001', product_code: 'PL', requested_amount: 200000, stage: 'REFERRED', stage_reason: 'DATA_UNAVAILABLE', created_epoch: 1762300000}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{queryParams: {stage: 'REFERRED', limit: '10'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\applications:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload[0].stage]" is="#[MunitTools::equalTo('REFERRED')]" />
+			<munit-tools:assert-that expression="#[payload[0].ageMinutes &gt; 0]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+</mule>
