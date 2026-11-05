@@ -1,0 +1,13 @@
+﻿target/
+.mule/
+.studio/
+.settings/
+.project
+.classpath
+*.jar
+*.log
+.env
+secure-key.txt
+**/src/main/resources/*-local-plain.yaml
+samples/documents/
+samples/checksums.json

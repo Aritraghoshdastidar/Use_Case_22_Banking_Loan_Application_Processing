@@ -1,0 +1,19 @@
+{
+  "users": [
+    { "name": "loan", "password_hash": "mYDtj2yt74QPo3NTFYPQ9TTnwfh7zS0F3PLyyvsPwoX8lYhu", "hashing_algorithm": "rabbit_password_hashing_sha256", "tags": ["administrator"] }
+  ],
+  "vhosts": [ { "name": "/" } ],
+  "permissions": [
+    { "user": "loan", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*" }
+  ],
+  "queues": [
+    { "name": "loan.verify.q",      "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "loan.verify.q.dlq",  "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "loan.score.q",       "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "loan.score.q.dlq",   "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "loan.decision.q",    "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "loan.decision.q.dlq","vhost": "/", "durable": true, "auto_delete": false, "arguments": {} }
+  ],
+  "exchanges": [],
+  "bindings": []
+}

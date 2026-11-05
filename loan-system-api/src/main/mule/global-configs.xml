@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+        http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+
+    <!-- Environment selector: local (default) or cloudhub. Override with -M-Dmule.env=cloudhub -->
+    <global-property name="mule.env" value="local" doc:name="Global Property: mule.env"/>
+
+    <!-- Plain properties, then encrypted properties. Key is passed at run time (secure.key), never committed for cloud. -->
+    <configuration-properties file="config-${mule.env}.yaml" doc:name="Config properties"/>
+    <secure-properties:config name="Secure_Properties_Config" file="secure-${mule.env}.yaml" key="${secure.key}"
+                              doc:name="Secure properties"/>
+
+    <configuration defaultErrorHandler-ref="global-error-handler" doc:name="Configuration"/>
+
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+        <http:listener-connection host="${http.listener.host}" port="${http.listener.port}"/>
+    </http:listener-config>
+
+    <db:config name="Database_Config" doc:name="Database Config (PostgreSQL)">
+        <db:generic-connection url="jdbc:postgresql://${db.host}:${db.port}/${db.name}"
+                               driverClassName="org.postgresql.Driver"
+                               user="${db.user}" password="${secure::db.password}">
+            <db:pooling-profile maxPoolSize="${db.maxPoolSize}" minPoolSize="${db.minPoolSize}"/>
+        </db:generic-connection>
+    </db:config>
+
+    <apikit:config name="loan-system-api-config" api="api/loan-system-api.raml"
+                   outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus"
+                   doc:name="APIkit Router config"/>
+</mule>

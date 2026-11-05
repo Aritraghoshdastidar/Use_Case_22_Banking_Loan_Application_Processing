@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="applications-test-suite.xml"/>
+
+    <!-- Reusable request body used by the POST tests -->
+    <munit:before-test name="set-new-application-body">
+        <set-variable variableName="newApp" value="#[{
+            requestId: 'REQ-1', payloadHash: 'hash-1', correlationId: '22222222-2222-4222-8222-222222222222',
+            productCode: 'PL', requestedAmount: 200000, requestedTenure: 24, applicantName: 'Test User',
+            dateOfBirth: '1990-05-15', identityRef: 'ABCDE1234F', email: 'test@example.com',
+            monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48,
+            manifest: { folder: 'complete-ok', documentCount: 4, documents: [] }
+        }]"/>
+    </munit:before-test>
+
+    <!-- ===================== POST /applications ===================== -->
+    <munit:test name="post-application-creates-new" description="First submission returns 201, created=true, stage RECEIVED">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application, outbox and audit"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{application_id: 'APP-2026-000001'}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#[vars.newApp]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\applications:application\json:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000001')]"/>
+            <munit-tools:assert-that expression="#[payload.created]" is="#[MunitTools::equalTo(true)]"/>
+            <munit-tools:assert-that expression="#[payload.stage]" is="#[MunitTools::equalTo('RECEIVED')]"/>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('201')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="post-application-duplicate-same-payload-returns-original"
+                description="Same requestId and payload returns the original applicationId with 200 and created=false">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application, outbox and audit"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Find application by request id"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{application_id: 'APP-2026-000007', payload_hash: 'hash-1', stage: 'VERIFYING'}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#[vars.newApp]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\applications:application\json:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000007')]"/>
+            <munit-tools:assert-that expression="#[payload.created]" is="#[MunitTools::equalTo(false)]"/>
+            <munit-tools:assert-that expression="#[payload.stage]" is="#[MunitTools::equalTo('VERIFYING')]"/>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('200')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="post-application-duplicate-different-payload-conflicts"
+                description="Same requestId with a different payloadHash is a 409 conflict"
+                expectedErrorType="APP:CONFLICT">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application, outbox and audit"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Find application by request id"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{application_id: 'APP-2026-000007', payload_hash: 'OTHER-HASH', stage: 'VERIFYING'}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#[vars.newApp]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\applications:application\json:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <!-- ===================== GET /applications/{id} ===================== -->
+    <munit:test name="get-application-returns-full-view" description="Found application includes documents and a decision with rule hits">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{
+                        application_id: 'APP-2026-000001', request_id: 'REQ-1', correlation_id: 'c1', product_code: 'PL',
+                        requested_amount: 200000, requested_tenure: 24, applicant_name: 'Test User', date_of_birth: '1990-05-15',
+                        identity_ref: 'ABCDE1234F', email: 'test@example.com', monthly_income: 90000, monthly_obligations: 10000,
+                        employment_months: 48, manifest: '{&quot;folder&quot;:&quot;complete-ok&quot;,&quot;documentCount&quot;:4}',
+                        stage: 'APPROVED', stage_reason: null, verification_round: 1
+                    }]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get documents"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{doc_type: 'PAYSLIP', file_name: 'payslip_1.pdf', status: 'ACCEPTED', sha256: 'abc'}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get decision"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{decision: 'APPROVED', score: 81.5, scorecard_version: 'SC-1.0', reason_codes: 'BAND_APPROVE,AFFORDABILITY_REDUCED'}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get rule hits"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{rule_code: 'BUREAU_SCORE', rule_type: 'FACTOR', weight: 35, points: 100, contribution: 35}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\applications\(applicationId):loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000001')]"/>
+            <munit-tools:assert-that expression="#[payload.stage]" is="#[MunitTools::equalTo('APPROVED')]"/>
+            <munit-tools:assert-that expression="#[payload.manifest.folder]" is="#[MunitTools::equalTo('complete-ok')]"/>
+            <munit-tools:assert-that expression="#[sizeOf(payload.documents)]" is="#[MunitTools::equalTo(1)]"/>
+            <munit-tools:assert-that expression="#[payload.decision.scorecardVersion]" is="#[MunitTools::equalTo('SC-1.0')]"/>
+            <munit-tools:assert-that expression="#[sizeOf(payload.decision.reasonCodes)]" is="#[MunitTools::equalTo(2)]"/>
+            <munit-tools:assert-that expression="#[payload.decision.ruleHits[0].ruleCode]" is="#[MunitTools::equalTo('BUREAU_SCORE')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="get-application-without-decision-has-null-decision" description="No decision row yet means decision is null">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{
+                        application_id: 'APP-2026-000002', request_id: 'REQ-2', correlation_id: 'c2', product_code: 'PL',
+                        manifest: '{&quot;folder&quot;:&quot;x&quot;,&quot;documentCount&quot;:0}', stage: 'RECEIVED', verification_round: 1
+                    }]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get documents"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return><munit-tools:payload value="#[[]]"/></munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get decision"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return><munit-tools:payload value="#[[]]"/></munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get rule hits"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return><munit-tools:payload value="#[[]]"/></munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000002'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\applications\(applicationId):loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.stage]" is="#[MunitTools::equalTo('RECEIVED')]"/>
+            <munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::nullValue()]"/>
+            <munit-tools:assert-that expression="#[sizeOf(payload.documents)]" is="#[MunitTools::equalTo(0)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="get-application-unknown-id-is-not-found" description="Unknown id raises APP:NOT_FOUND" expectedErrorType="APP:NOT_FOUND">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return><munit-tools:payload value="#[[]]"/></munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\applications\(applicationId):loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+</mule>

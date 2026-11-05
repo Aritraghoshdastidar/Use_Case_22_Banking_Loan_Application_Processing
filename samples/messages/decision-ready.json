@@ -1,0 +1,8 @@
+{
+  "messageId": "44444444-4444-4444-8444-444444444444",
+  "correlationId": "22222222-2222-4222-8222-222222222222",
+  "applicationId": "APP-2026-000001",
+  "type": "DECISION_READY",
+  "attempt": 1,
+  "createdAt": "2026-11-04T10:32:00Z"
+}

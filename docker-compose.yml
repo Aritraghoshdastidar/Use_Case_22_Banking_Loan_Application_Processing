@@ -1,0 +1,78 @@
+﻿# Local stack for the loan project. Start: docker compose up -d
+# Credentials here are LOCAL DEMO ONLY. Cloud credentials live in encrypted secure-*.yaml, never here.
+name: loan
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: loan-postgres
+    environment:
+      POSTGRES_DB: loan
+      POSTGRES_USER: loan
+      POSTGRES_PASSWORD: loan
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loan -d loan"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: loan-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: loan-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8625:8025"   # web UI (Windows reserves 7779-8378 on this laptop, so not 8025)
+    # To demo "SMTP unavailable" (AC 14): docker compose stop mailhog
+
+  minio:
+    # Official minio/minio images are no longer pullable from Docker Hub/quay; bitnamilegacy mirror works for local dev.
+    image: bitnamilegacy/minio:latest
+    container_name: loan-minio
+    environment:
+      MINIO_ROOT_USER: loan
+      MINIO_ROOT_PASSWORD: loan-secret-123
+      MINIO_DEFAULT_BUCKETS: loan-docs
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # console
+    volumes:
+      - miniodata:/bitnami/minio/data
+
+  # Fallback document store if the Mule S3 connector cannot target MinIO.
+  # Start with: docker compose --profile sftp up -d sftp
+  sftp:
+    image: atmoz/sftp:alpine
+    container_name: loan-sftp
+    profiles: ["sftp"]
+    command: loan:loan:1001:100:staging,verified,quarantine
+    ports:
+      - "2222:22"
+
+volumes:
+  pgdata:
+  rabbitdata:
+  miniodata:
+
+

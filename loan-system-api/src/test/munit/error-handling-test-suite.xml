@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="error-handling-test-suite.xml"/>
+
+    <munit:test name="raise-not-found" description="NOT_FOUND raises APP:NOT_FOUND" expectedErrorType="APP:NOT_FOUND">
+        <munit:behavior>
+            <set-variable variableName="appError" value="NOT_FOUND"/>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="sf-raise-app-error"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="raise-conflict" description="CONFLICT raises APP:CONFLICT" expectedErrorType="APP:CONFLICT">
+        <munit:behavior>
+            <set-variable variableName="appError" value="CONFLICT"/>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="sf-raise-app-error"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="raise-unavailable" description="UNAVAILABLE raises APP:UNAVAILABLE" expectedErrorType="APP:UNAVAILABLE">
+        <munit:behavior>
+            <set-variable variableName="appError" value="UNAVAILABLE"/>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="sf-raise-app-error"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="raise-default-is-bad-request" description="Unknown code falls back to APP:BAD_REQUEST" expectedErrorType="APP:BAD_REQUEST">
+        <munit:behavior>
+            <set-variable variableName="appError" value="SOMETHING_ELSE"/>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="sf-raise-app-error"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="business-error-message-is-returned" description="NOT_FOUND keeps its safe message in the body">
+        <munit:behavior>
+            <set-variable variableName="httpStatus" value="404"/>
+            <set-variable variableName="errorCode" value="NOT_FOUND"/>
+        </munit:behavior>
+        <munit:execution>
+            <try>
+                <set-variable variableName="appError" value="NOT_FOUND"/>
+                <set-variable variableName="appErrorMessage" value="Application not found"/>
+                <flow-ref name="sf-raise-app-error"/>
+                <error-handler>
+                    <on-error-continue>
+                        <flow-ref name="sf-build-error-response"/>
+                    </on-error-continue>
+                </error-handler>
+            </try>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('NOT_FOUND')]"/>
+            <munit-tools:assert-that expression="#[payload.message]" is="#[MunitTools::equalTo('Application not found')]"/>
+        </munit:validation>
+    </munit:test>
+</mule>

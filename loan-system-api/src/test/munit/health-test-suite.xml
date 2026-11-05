@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="health-test-suite.xml"/>
+
+    <munit:test name="health-returns-up-when-database-answers" description="GET /health reports UP when the DB ping succeeds">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Ping database"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{ok: 1}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\health:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('UP')]"/>
+            <munit-tools:assert-that expression="#[payload.database]" is="#[MunitTools::equalTo('UP')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="health-fails-with-connectivity-error-when-database-is-down"
+                description="DB down surfaces DB:CONNECTIVITY (the global handler maps it to 503)"
+                expectedErrorType="DB:CONNECTIVITY">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Ping database"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="DB:CONNECTIVITY"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\health:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="error-body-hides-technical-detail" description="500-style errors get a generic message">
+        <munit:behavior>
+            <set-variable variableName="httpStatus" value="500"/>
+            <set-variable variableName="errorCode" value="INTERNAL_ERROR"/>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="sf-build-error-response"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('INTERNAL_ERROR')]"/>
+            <munit-tools:assert-that expression="#[payload.message]" is="#[MunitTools::equalTo('Request could not be processed')]"/>
+        </munit:validation>
+    </munit:test>
+</mule>

@@ -1,0 +1,8 @@
+{
+  "messageId": "33333333-3333-4333-8333-333333333333",
+  "correlationId": "22222222-2222-4222-8222-222222222222",
+  "applicationId": "APP-2026-000001",
+  "type": "SCORE_REQUESTED",
+  "attempt": 1,
+  "createdAt": "2026-11-04T10:31:00Z"
+}

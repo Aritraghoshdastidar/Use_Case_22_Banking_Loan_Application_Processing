@@ -1,0 +1,17 @@
+# Non-secret settings for the LOCAL environment (docker-compose stack).
+app:
+  name: "loan-system-api"
+http:
+  listener:
+    host: "0.0.0.0"
+    port: "8701"
+    basePath: "/api/*"
+db:
+  host: "localhost"
+  port: "5432"
+  name: "loan"
+  user: "loan"
+  maxPoolSize: "5"
+  minPoolSize: "1"
+cache:
+  productTtlSeconds: "60"

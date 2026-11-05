@@ -1,0 +1,354 @@
+#%RAML 1.0
+title: Loan System API
+version: v1
+description: |
+  System layer for the loan platform. The ONLY component that talks to PostgreSQL.
+  Operations are business-level (not generic CRUD) so each call is one atomic transaction,
+  e.g. creating an application together with its outbox message.
+  Also hosts the credit bureau mock.
+baseUri: http://localhost:8701/api
+mediaType: application/json
+protocols: [HTTP, HTTPS]
+
+types:
+  Stage:
+    type: string
+    enum: [RECEIVED, VERIFYING, DOCUMENTS_INCOMPLETE, VERIFIED, SCORING, APPROVED, DECLINED, REFERRED]
+  QueueName:
+    type: string
+    enum: [loan.verify.q, loan.score.q, loan.decision.q]
+  MessageType:
+    type: string
+    enum: [VERIFY_REQUESTED, SCORE_REQUESTED, DECISION_READY]
+  Error:
+    properties:
+      code: string
+      message: string
+      details?: any
+  Manifest:
+    properties:
+      folder: string
+      documentCount: integer
+      documents:
+        type: array
+        items:
+          properties:
+            fileName: string
+            type: string
+            sha256?: string
+  NewApplication:
+    description: Fields validated by the experience API before this call; the system API only persists.
+    properties:
+      requestId: string
+      payloadHash: string
+      correlationId: string
+      productCode: string
+      requestedAmount: number
+      requestedTenure: integer
+      applicantName: string
+      dateOfBirth: date-only
+      identityRef: string
+      email: string
+      monthlyIncome: number
+      monthlyObligations: number
+      employmentMonths: integer
+      manifest: Manifest
+  ApplicationCreated:
+    properties:
+      applicationId: string
+      created: boolean
+      stage: Stage
+  StageChange:
+    properties:
+      toStage: Stage
+      reason?: string
+      sourceApp: string
+      correlationId: string
+      expectedFromStage?:
+        type: Stage
+        description: If set and the current stage differs, the call fails with 409 (guards against races).
+      detail?: any
+      publish?:
+        description: Optional message written to the outbox in the same transaction.
+        properties:
+          queue: QueueName
+          type: MessageType
+  DocumentRecord:
+    properties:
+      docType?: string
+      fileName: string
+      status:
+        type: string
+        enum: [ACCEPTED, QUARANTINED, UNEXPECTED, DUPLICATE]
+      reason?: string
+      sizeBytes?: integer
+      sha256?: string
+      sourcePath: string
+      storedPath?: string
+  DocumentInventory:
+    properties:
+      documents: DocumentRecord[]
+  RuleHit:
+    properties:
+      ruleCode: string
+      ruleType:
+        type: string
+        enum: [FACTOR, HARD_RULE]
+      inputValue?: number
+      weight?: number
+      points?: number
+      contribution?: number
+      triggered?: boolean
+  Decision:
+    properties:
+      decision:
+        type: string
+        enum: [APPROVED, DECLINED, REFERRED]
+      score?: number
+      scorecardVersion: string
+      decidingRule?: string
+      reasonCodes: string[]
+      requestedAmount: number
+      approvedAmount?: number
+      approvedTenure?: integer
+      approvedRatePct?: number
+      instalment?: number
+      affordabilityRatio?: number
+      reductionReason?: string
+      offerExpiresAt?: datetime
+      sourceApp: string
+      correlationId: string
+      ruleHits: RuleHit[]
+  AuditEvent:
+    properties:
+      applicationId: string
+      correlationId: string
+      event: string
+      fromStage?: string
+      toStage?: string
+      sourceApp: string
+      detail?: any
+  Claim:
+    properties:
+      consumer: string
+      messageId: string
+  BureauReport:
+    properties:
+      identityRef: string
+      bureauScore: integer
+      missedPayments24m: integer
+      activeDefault: boolean
+  NotificationRequest:
+    properties:
+      applicationId: string
+      template:
+        type: string
+        enum: [APPROVED, DECLINED, REFERRED, DOCUMENTS_MISSING]
+      round: integer
+  NotificationUpdate:
+    properties:
+      status:
+        type: string
+        enum: [PENDING, RETRYING, SENT, FAILED]
+      lastError?: string
+
+/health:
+  get:
+    description: Liveness plus database connectivity.
+    responses:
+      200:
+        body:
+          application/json:
+            example: { "status": "UP", "database": "UP" }
+      503:
+        body:
+          application/json:
+            type: Error
+
+/products/{code}:
+  get:
+    description: Product limits and rate. 404 if the product code is unknown.
+    responses:
+      200:
+      404:
+        body: { type: Error }
+  /document-rules:
+    get:
+      description: Checklist for the product (read from the database on each call, cached by the caller).
+      responses:
+        200:
+        404:
+          body: { type: Error }
+
+/scorecards/active:
+  get:
+    description: Active scorecard version, band thresholds, offer validity and factor configuration.
+    responses:
+      200:
+
+/applications:
+  post:
+    description: |
+      Creates the application AND its VERIFY_REQUESTED outbox message in one transaction, plus the RECEIVED audit row.
+      Same requestId and same payloadHash returns the existing application (200, created=false).
+      Same requestId with a different payloadHash returns 409.
+    body:
+      type: NewApplication
+    responses:
+      201:
+        body: { type: ApplicationCreated }
+      200:
+        body: { type: ApplicationCreated }
+      409:
+        body: { type: Error }
+  get:
+    description: List applications, for example REFERRED ones for the underwriting digest.
+    queryParameters:
+      stage?: Stage
+      limit?:
+        type: integer
+        default: 100
+    responses:
+      200:
+
+/applications/{applicationId}:
+  get:
+    description: Application with stage, document inventory and decision (feeds the status endpoint).
+    responses:
+      200:
+      404:
+        body: { type: Error }
+  /stage:
+    put:
+      description: |
+        Moves the application to a new stage, writes an audit row and optionally an outbox message, all atomically.
+        409 if expectedFromStage does not match.
+      body: { type: StageChange }
+      responses:
+        200:
+        404:
+          body: { type: Error }
+        409:
+          body: { type: Error }
+  /resubmit:
+    post:
+      description: |
+        Allowed only from DOCUMENTS_INCOMPLETE. Increments the verification round, sets VERIFYING, writes audit and a
+        VERIFY_REQUESTED outbox message in one transaction. Two concurrent calls: one wins, the other gets 409.
+      responses:
+        202:
+        404:
+          body: { type: Error }
+        409:
+          body: { type: Error }
+  /documents:
+    put:
+      description: Upserts the document inventory (unique per application and source path).
+      body: { type: DocumentInventory }
+      responses:
+        200:
+        404:
+          body: { type: Error }
+  /decision:
+    post:
+      description: |
+        Saves the decision and rule hits, moves the stage to the decision, writes audit and a DECISION_READY outbox
+        message in one transaction. One decision per application: a repeat call returns 200 with the stored decision and
+        changes nothing.
+      body: { type: Decision }
+      responses:
+        201:
+        200:
+        404:
+          body: { type: Error }
+  /audit:
+    get:
+      description: Full audit trail in order, for reconstruction (AC 15).
+      responses:
+        200:
+        404:
+          body: { type: Error }
+
+/audit/events:
+  post:
+    description: Append one audit event (insert only).
+    body: { type: AuditEvent }
+    responses:
+      201:
+
+/outbox:
+  /pending:
+    get:
+      queryParameters:
+        limit?:
+          type: integer
+          default: 50
+      responses:
+        200:
+  /{messageId}/sent:
+    post:
+      responses:
+        204:
+  /{messageId}/failed:
+    post:
+      body:
+        properties:
+          error: string
+      responses:
+        204:
+
+/processed-messages:
+  post:
+    description: |
+      Consumer dedupe. Claims a message id for a consumer.
+      201 = first time, go ahead. 409 = already processed, skip.
+    body: { type: Claim }
+    responses:
+      201:
+      409:
+        body: { type: Error }
+
+/notifications:
+  post:
+    description: Ensures one row per application, template and round. Returns the existing row if present.
+    body: { type: NotificationRequest }
+    responses:
+      200:
+      201:
+  get:
+    description: Notifications not yet SENT (unnotified decisions), with the age of each.
+    queryParameters:
+      status?: string
+    responses:
+      200:
+  /{notificationId}:
+    put:
+      body: { type: NotificationUpdate }
+      responses:
+        200:
+        404:
+          body: { type: Error }
+
+/bureau:
+  /reports/{identityRef}:
+    get:
+      description: |
+        Mock credit bureau. 404 if the identity has no history, 503 if the bureau switch is off.
+        Callers treat both as DATA_UNAVAILABLE.
+      responses:
+        200:
+          body: { type: BureauReport }
+        404:
+          body: { type: Error }
+        503:
+          body: { type: Error }
+  /switch:
+    get:
+      responses:
+        200:
+    put:
+      body:
+        properties:
+          enabled: boolean
+      responses:
+        200:

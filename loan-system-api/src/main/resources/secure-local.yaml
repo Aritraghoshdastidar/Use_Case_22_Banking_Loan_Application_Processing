@@ -1,0 +1,7 @@
+# Secrets for the LOCAL environment, encrypted with the Mule Secure Properties tool (AES / CBC).
+# The key is passed at run time (-M-Dsecure.key=...) and is not stored in this file.
+# To encrypt another value:
+#   java -cp secure-properties-tool.jar com.mulesoft.tools.SecurePropertiesTool string encrypt AES CBC <key> <value>
+# and paste the result as ![result]
+db:
+  password: "![pjnVtbPGIzM1VsYqnbL7Fg==]"
