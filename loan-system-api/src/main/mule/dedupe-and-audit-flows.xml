@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<flow name="post:\processed-messages:application\json:loan-system-api-config">
+		<set-variable value="#[payload.messageId]" doc:name="Set messageId" variableName="messageId" />
+		<set-variable value="#[payload.consumer]" doc:name="Set consumer" variableName="consumer" />
+		<flow-ref doc:name="sf-validate-message-id" name="sf-validate-message-id" />
+		<db:select doc:name="Claim message" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH c AS (
+    INSERT INTO processed_messages (consumer, message_id)
+    VALUES (:consumer, CAST(:messageId AS uuid))
+    ON CONFLICT DO NOTHING
+    RETURNING consumer
+)
+SELECT consumer FROM c]]></db:sql>
+			<db:input-parameters><![CDATA[#[{consumer: vars.consumer, messageId: vars.messageId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set claimed" variableName="claimed" />
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(vars.claimed)]">
+				<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Message already processed by this consumer" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<set-variable value="201" doc:name="Set httpStatus" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ claimed: true }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="delete:\processed-messages\(consumer)\(messageId):loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.messageId]" doc:name="Set messageId" variableName="messageId" />
+		<set-variable value="#[attributes.uriParams.consumer]" doc:name="Set consumer" variableName="consumer" />
+		<flow-ref doc:name="sf-validate-message-id" name="sf-validate-message-id" />
+		<db:select doc:name="Release message" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH d AS (
+    DELETE FROM processed_messages
+    WHERE consumer = :consumer AND message_id = CAST(:messageId AS uuid)
+    RETURNING consumer
+)
+SELECT consumer FROM d]]></db:sql>
+			<db:input-parameters><![CDATA[#[{consumer: vars.consumer, messageId: vars.messageId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="204" doc:name="Set httpStatus" variableName="httpStatus" />
+		<set-payload value="#[null]" doc:name="Set Payload" />
+	</flow>
+	<flow name="post:\audit\events:application\json:loan-system-api-config">
+		<validation:matches-regex doc:name="Validate correlationId" value="#[payload.correlationId]" regex="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" message="Identifier is not a valid UUID" />
+		<db:select doc:name="Insert audit event" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH i AS (
+    INSERT INTO decision_audit (application_id, correlation_id, event, from_stage, to_stage, source_app, detail)
+    SELECT application_id, CAST(:correlationId AS uuid), :event, CAST(:fromStage AS text), CAST(:toStage AS text), :sourceApp, CAST(:detail AS jsonb)
+    FROM applications
+    WHERE application_id = :applicationId
+    RETURNING id
+)
+SELECT id FROM i]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	applicationId: payload.applicationId,
+	correlationId: payload.correlationId,
+	event: payload.event,
+	fromStage: payload.fromStage,
+	toStage: payload.toStage,
+	sourceApp: payload.sourceApp,
+	detail: write(payload.detail default {}, "application/json")
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set inserted" variableName="inserted" />
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(vars.inserted)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<set-variable value="201" doc:name="Set httpStatus" variableName="httpStatus" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ id: vars.inserted[0].id }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="get:\applications\(applicationId)\audit:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<db:select doc:name="Check application" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT application_id
+FROM applications
+WHERE application_id = :applicationId]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set known" variableName="known" />
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(vars.known)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<db:select doc:name="Get audit trail" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT id, event, from_stage, to_stage, source_app, CAST(correlation_id AS text) AS correlation_id,
+       CAST(detail AS text) AS detail,
+       CAST(EXTRACT(EPOCH FROM created_at) AS bigint) AS created_epoch
+FROM decision_audit
+WHERE application_id = :applicationId
+ORDER BY id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set rows" variableName="rows" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/audit-trail-response.dwl" />
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

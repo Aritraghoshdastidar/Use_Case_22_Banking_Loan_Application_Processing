@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<flow name="get:\outbox\pending:loan-system-api-config">
+		<db:select doc:name="Get pending outbox" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT CAST(id AS text) AS id, queue_name, CAST(payload AS text) AS payload, attempts,
+       CAST(EXTRACT(EPOCH FROM created_at) AS bigint) AS created_epoch
+FROM outbox
+WHERE status = 'PENDING'
+ORDER BY created_at
+LIMIT :maxRows]]></db:sql>
+			<db:input-parameters><![CDATA[#[{maxRows: min([(attributes.queryParams.limit default 50) as Number, 200])}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set rows" variableName="rows" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/outbox-response.dwl" />
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="post:\outbox\(messageId)\sent:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.messageId]" doc:name="Set messageId" variableName="messageId" />
+		<flow-ref doc:name="sf-validate-message-id" name="sf-validate-message-id" />
+		<db:select doc:name="Mark sent" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH u AS (
+    UPDATE outbox
+    SET status = 'SENT', sent_at = now(), attempts = attempts + 1
+    WHERE id = CAST(:messageId AS uuid) AND status = 'PENDING'
+    RETURNING id
+)
+SELECT (SELECT count(*) FROM outbox WHERE id = CAST(:messageId AS uuid)) AS found]]></db:sql>
+			<db:input-parameters><![CDATA[#[{messageId: vars.messageId}]]]></db:input-parameters>
+		</db:select>
+		<flow-ref doc:name="sf-finish-outbox-update" name="sf-finish-outbox-update" />
+	</flow>
+	<flow name="post:\outbox\(messageId)\failed:application\json:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.messageId]" doc:name="Set messageId" variableName="messageId" />
+		<flow-ref doc:name="sf-validate-message-id" name="sf-validate-message-id" />
+		<db:select doc:name="Mark failed" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH u AS (
+    UPDATE outbox
+    SET attempts = attempts + 1, last_error = left(CAST(:errorText AS text), 300)
+    WHERE id = CAST(:messageId AS uuid) AND status = 'PENDING'
+    RETURNING id
+)
+SELECT (SELECT count(*) FROM outbox WHERE id = CAST(:messageId AS uuid)) AS found]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	messageId: vars.messageId,
+	errorText: (payload."error" default "") as String
+}]]]></db:input-parameters>
+		</db:select>
+		<flow-ref doc:name="sf-finish-outbox-update" name="sf-finish-outbox-update" />
+	</flow>
+	<sub-flow name="sf-validate-message-id">
+		<validation:matches-regex doc:name="Validate messageId" value="#[vars.messageId]" regex="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" message="Identifier is not a valid UUID" />
+	</sub-flow>
+	<sub-flow name="sf-finish-outbox-update">
+		<set-variable value="#[payload[0]]" doc:name="Set result" variableName="result" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.result.found == 0]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Outbox message not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<set-variable value="204" doc:name="Set httpStatus" variableName="httpStatus" />
+		<set-payload value="#[null]" doc:name="Set Payload" />
+	</sub-flow>
+</mule>

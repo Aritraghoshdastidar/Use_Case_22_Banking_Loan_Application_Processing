@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="put:\applications\(applicationId)\stage:application\json:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<set-variable value="#[output application/java --- payload.toStage]" doc:name="Set toStage" variableName="toStage" />
+		<db:select doc:name="Update stage" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH cur AS (
+    SELECT application_id, stage
+    FROM applications
+    WHERE application_id = :applicationId
+    FOR UPDATE
+),
+upd AS (
+    UPDATE applications a
+    SET stage = :toStage, stage_reason = :reason, updated_at = now()
+    FROM cur
+    WHERE a.application_id = cur.application_id
+      AND (CAST(:expectedFrom AS text) IS NULL OR cur.stage = CAST(:expectedFrom AS text))
+    RETURNING a.application_id
+),
+au AS (
+    INSERT INTO decision_audit (application_id, correlation_id, event, from_stage, to_stage, source_app, detail)
+    SELECT upd.application_id, CAST(:correlationId AS uuid), :toStage, cur.stage, :toStage, :sourceApp, CAST(:detail AS jsonb)
+    FROM upd JOIN cur ON cur.application_id = upd.application_id
+),
+ob AS (
+    INSERT INTO outbox (id, queue_name, payload)
+    SELECT CAST(:messageId AS uuid), CAST(:queue AS text),
+           jsonb_build_object('messageId', CAST(:messageId AS text),
+                              'correlationId', CAST(:correlationId AS text),
+                              'applicationId', upd.application_id,
+                              'type', CAST(:messageType AS text),
+                              'attempt', 1,
+                              'createdAt', CAST(:createdAt AS text))
+    FROM upd
+    WHERE CAST(:queue AS text) IS NOT NULL
+)
+SELECT (SELECT count(*) FROM cur) AS found,
+       (SELECT count(*) FROM upd) AS updated,
+       (SELECT stage FROM cur) AS current_stage]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	applicationId: vars.applicationId,
+	toStage: payload.toStage,
+	reason: payload.reason,
+	expectedFrom: payload.expectedFromStage,
+	sourceApp: payload.sourceApp,
+	correlationId: payload.correlationId,
+	detail: write(payload.detail default {}, "application/json"),
+	queue: payload.publish.queue,
+	messageType: payload.publish."type",
+	messageId: uuid(),
+	createdAt: (now() >> "UTC") as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload[0]]" doc:name="Set result" variableName="result" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.result.found == 0]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+			<when expression="#[vars.result.updated == 0]">
+				<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+				<set-variable value="#['Application is in stage ' ++ vars.result.current_stage ++ ', not the expected stage']" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<logger level="INFO" doc:name="Logger" category="com.loan.system.stage" message="#['stage change applicationId=' ++ vars.applicationId ++ ' from=' ++ vars.result.current_stage ++ ' to=' ++ vars.toStage ++ ' correlationId=' ++ correlationId]" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	applicationId: vars.applicationId,
+	fromStage: vars.result.current_stage,
+	toStage: vars.toStage
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="post:\applications\(applicationId)\resubmit:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<db:select doc:name="Resubmit application" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH cur AS (
+    SELECT application_id, stage
+    FROM applications
+    WHERE application_id = :applicationId
+    FOR UPDATE
+),
+upd AS (
+    UPDATE applications a
+    SET stage = 'VERIFYING', stage_reason = NULL, verification_round = a.verification_round + 1, updated_at = now()
+    FROM cur
+    WHERE a.application_id = cur.application_id
+      AND cur.stage = 'DOCUMENTS_INCOMPLETE'
+    RETURNING a.application_id, a.verification_round, a.correlation_id
+),
+au AS (
+    INSERT INTO decision_audit (application_id, correlation_id, event, from_stage, to_stage, source_app)
+    SELECT upd.application_id, upd.correlation_id, 'RESUBMITTED', 'DOCUMENTS_INCOMPLETE', 'VERIFYING', 'loan-system-api'
+    FROM upd
+),
+ob AS (
+    INSERT INTO outbox (id, queue_name, payload)
+    SELECT CAST(:messageId AS uuid), 'loan.verify.q',
+           jsonb_build_object('messageId', CAST(:messageId AS text),
+                              'correlationId', CAST(upd.correlation_id AS text),
+                              'applicationId', upd.application_id,
+                              'type', 'VERIFY_REQUESTED',
+                              'attempt', 1,
+                              'createdAt', CAST(:createdAt AS text))
+    FROM upd
+)
+SELECT (SELECT count(*) FROM cur) AS found,
+       (SELECT count(*) FROM upd) AS updated,
+       (SELECT stage FROM cur) AS current_stage,
+       (SELECT verification_round FROM upd) AS verification_round]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	applicationId: vars.applicationId,
+	messageId: uuid(),
+	createdAt: (now() >> "UTC") as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload[0]]" doc:name="Set result" variableName="result" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.result.found == 0]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+			<when expression="#[vars.result.updated == 0]">
+				<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+				<set-variable value="#['Resubmission is only allowed from DOCUMENTS_INCOMPLETE (current stage: ' ++ vars.result.current_stage ++ ')']" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<set-variable value="202" doc:name="Set httpStatus" variableName="httpStatus" />
+		<logger level="INFO" doc:name="Logger" category="com.loan.system.stage" message="#['resubmitted applicationId=' ++ vars.applicationId ++ ' round=' ++ (vars.result.verification_round as String) ++ ' correlationId=' ++ correlationId]" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	applicationId: vars.applicationId,
+	stage: "VERIFYING",
+	verificationRound: vars.result.verification_round
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
