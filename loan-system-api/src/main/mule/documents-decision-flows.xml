@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="put:\applications\(applicationId)\documents:application\json:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<set-variable value="#[output application/java --- payload.documents]" doc:name="Set documents" variableName="documents" />
+		<db:select doc:name="Check application exists" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT application_id
+FROM applications
+WHERE application_id = :applicationId]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(payload)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<try doc:name="Try" transactionalAction="ALWAYS_BEGIN" transactionType="LOCAL">
+			<foreach doc:name="For Each" collection="#[vars.documents]">
+				<db:insert doc:name="Upsert document" config-ref="Database_Config">
+					<db:sql><![CDATA[INSERT INTO application_documents (application_id, doc_type, file_name, status, reason, size_bytes, sha256, source_path, stored_path)
+VALUES (:applicationId, :docType, :fileName, :status, :reason, :sizeBytes, :sha256, :sourcePath, :storedPath)
+ON CONFLICT (application_id, source_path) DO UPDATE
+SET doc_type = EXCLUDED.doc_type, file_name = EXCLUDED.file_name, status = EXCLUDED.status, reason = EXCLUDED.reason,
+    size_bytes = EXCLUDED.size_bytes, sha256 = EXCLUDED.sha256, stored_path = EXCLUDED.stored_path]]></db:sql>
+					<db:input-parameters><![CDATA[#[{
+	applicationId: vars.applicationId,
+	docType: payload.docType,
+	fileName: payload.fileName,
+	status: payload.status,
+	reason: payload.reason,
+	sizeBytes: payload.sizeBytes,
+	sha256: payload.sha256,
+	sourcePath: payload.sourcePath,
+	storedPath: payload.storedPath
+}]]]></db:input-parameters>
+				</db:insert>
+			</foreach>
+			<error-handler>
+				<on-error-propagate enableNotifications="false" logException="false" type="DB:QUERY_EXECUTION">
+					<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+					<set-variable value="Document inventory conflicts with existing records" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+					<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	applicationId: vars.applicationId,
+	documents: sizeOf(vars.documents)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="post:\applications\(applicationId)\decision:application\json:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<set-variable value="#[output application/java --- payload.ruleHits default []]" doc:name="Set ruleHits" variableName="ruleHits" />
+		<try doc:name="Try" transactionalAction="ALWAYS_BEGIN" transactionType="LOCAL">
+			<db:select doc:name="Insert decision" config-ref="Database_Config">
+				<db:sql><![CDATA[WITH d AS (
+    INSERT INTO credit_decisions (application_id, decision, score, scorecard_version, deciding_rule, reason_codes, requested_amount,
+                                  approved_amount, approved_tenure, approved_rate_pct, instalment, affordability_ratio,
+                                  reduction_reason, offer_expires_at)
+    SELECT a.application_id, CAST(:decision AS text), CAST(:score AS numeric), CAST(:scorecardVersion AS text),
+           CAST(:decidingRule AS text), string_to_array(CAST(:reasonCodes AS text), ','), CAST(:requestedAmount AS numeric),
+           CAST(:approvedAmount AS numeric), CAST(:approvedTenure AS integer), CAST(:approvedRatePct AS numeric),
+           CAST(:instalment AS numeric), CAST(:affordabilityRatio AS numeric), CAST(:reductionReason AS text),
+           CAST(CAST(:offerExpiresAt AS text) AS timestamptz)
+    FROM applications a
+    WHERE a.application_id = :applicationId AND a.stage = 'SCORING'
+    ON CONFLICT (application_id) DO NOTHING
+    RETURNING application_id
+),
+upd AS (
+    UPDATE applications a
+    SET stage = CAST(:decision AS text), stage_reason = CAST(:decidingRule AS text), updated_at = now()
+    FROM d
+    WHERE a.application_id = d.application_id
+    RETURNING a.application_id
+),
+au AS (
+    INSERT INTO decision_audit (application_id, correlation_id, event, from_stage, to_stage, source_app)
+    SELECT upd.application_id, CAST(:correlationId AS uuid), CAST(:decision AS text), 'SCORING', CAST(:decision AS text), CAST(:sourceApp AS text)
+    FROM upd
+),
+ob AS (
+    INSERT INTO outbox (id, queue_name, payload)
+    SELECT CAST(:messageId AS uuid), 'loan.decision.q',
+           jsonb_build_object('messageId', CAST(:messageId AS text),
+                              'correlationId', CAST(:correlationId AS text),
+                              'applicationId', upd.application_id,
+                              'type', 'DECISION_READY',
+                              'attempt', 1,
+                              'createdAt', CAST(:createdAt AS text))
+    FROM upd
+)
+SELECT (SELECT count(*) FROM d) AS inserted,
+       (SELECT count(*) FROM applications WHERE application_id = :applicationId) AS found,
+       (SELECT stage FROM applications WHERE application_id = :applicationId) AS current_stage,
+       (SELECT count(*) FROM credit_decisions WHERE application_id = :applicationId) AS decision_count]]></db:sql>
+				<db:input-parameters><![CDATA[#[{
+	applicationId: vars.applicationId,
+	decision: payload.decision,
+	score: payload.score,
+	scorecardVersion: payload.scorecardVersion,
+	decidingRule: payload.decidingRule,
+	reasonCodes: (payload.reasonCodes default []) joinBy ",",
+	requestedAmount: payload.requestedAmount,
+	approvedAmount: payload.approvedAmount,
+	approvedTenure: payload.approvedTenure,
+	approvedRatePct: payload.approvedRatePct,
+	instalment: payload.instalment,
+	affordabilityRatio: payload.affordabilityRatio,
+	reductionReason: payload.reductionReason,
+	offerExpiresAt: payload.offerExpiresAt as String,
+	correlationId: payload.correlationId,
+	sourceApp: payload.sourceApp,
+	messageId: uuid(),
+	createdAt: (now() >> "UTC") as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}
+}]]]></db:input-parameters>
+			</db:select>
+			<set-variable value="#[payload[0]]" doc:name="Set result" variableName="result" />
+			<choice doc:name="Choice">
+				<when expression="#[vars.result.inserted == 1]">
+					<foreach doc:name="For Each" collection="#[vars.ruleHits]">
+						<db:insert doc:name="Insert rule hit" config-ref="Database_Config">
+							<db:sql><![CDATA[INSERT INTO decision_rule_hits (application_id, rule_code, rule_type, input_value, weight, points, contribution, triggered)
+VALUES (:applicationId, :ruleCode, :ruleType, :inputValue, :weight, :points, :contribution, :triggered)]]></db:sql>
+							<db:input-parameters><![CDATA[#[{
+	applicationId: vars.applicationId,
+	ruleCode: payload.ruleCode,
+	ruleType: payload.ruleType,
+	inputValue: payload.inputValue,
+	weight: payload.weight,
+	points: payload.points,
+	contribution: payload.contribution,
+	triggered: payload.triggered
+}]]]></db:input-parameters>
+						</db:insert>
+					</foreach>
+				</when>
+			</choice>
+		</try>
+		<choice doc:name="Choice">
+			<when expression="#[vars.result.inserted == 1]">
+				<set-variable value="201" doc:name="Set httpStatus" variableName="httpStatus" />
+				<set-variable value="#[true]" doc:name="Set created" variableName="created" />
+			</when>
+			<when expression="#[vars.result.decision_count &gt; 0]">
+				<set-variable value="200" doc:name="Set httpStatus" variableName="httpStatus" />
+				<set-variable value="#[false]" doc:name="Set created" variableName="created" />
+			</when>
+			<when expression="#[vars.result.found == 0]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+			<otherwise>
+				<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+				<set-variable value="#['Application is in stage ' ++ vars.result.current_stage ++ ', not SCORING']" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" category="com.loan.system.decision" message="#['decision saved applicationId=' ++ vars.applicationId ++ ' created=' ++ (vars.created as String) ++ ' correlationId=' ++ correlationId]" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	applicationId: vars.applicationId,
+	created: vars.created
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

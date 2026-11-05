@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<flow name="post:\notifications:application\json:loan-system-api-config">
+		<set-variable value="#[output application/java --- payload.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<set-variable value="#[output application/java --- payload.template]" doc:name="Set template" variableName="template" />
+		<set-variable value="#[output application/java --- payload.round]" doc:name="Set round" variableName="round" />
+		<db:select doc:name="Ensure notification" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH ins AS (
+    INSERT INTO notifications (application_id, template, round)
+    SELECT application_id, CAST(:template AS text), CAST(:round AS integer)
+    FROM applications
+    WHERE application_id = :applicationId
+    ON CONFLICT (application_id, template, round) DO NOTHING
+    RETURNING id
+)
+SELECT (SELECT count(*) FROM ins) AS inserted,
+       (SELECT count(*) FROM applications WHERE application_id = :applicationId) AS found]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId, template: vars.template, round: vars.round}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload[0]]" doc:name="Set result" variableName="result" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.result.found == 0]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+			<when expression="#[vars.result.inserted == 1]">
+				<set-variable value="201" doc:name="Set httpStatus" variableName="httpStatus" />
+			</when>
+		</choice>
+		<db:select doc:name="Get notification" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT id, application_id, template, round, status, attempts, last_error
+FROM notifications
+WHERE application_id = :applicationId AND template = :template AND round = :round]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId, template: vars.template, round: vars.round}]]]></db:input-parameters>
+		</db:select>
+		<flow-ref doc:name="sf-notification-response" name="sf-notification-response" />
+	</flow>
+	<flow name="put:\notifications\(notificationId):application\json:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.notificationId]" doc:name="Set notificationId" variableName="notificationId" />
+		<validation:matches-regex doc:name="Validate notificationId" value="#[vars.notificationId]" regex="[0-9]{1,18}" message="Notification id must be a number" />
+		<db:select doc:name="Update notification" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH u AS (
+    UPDATE notifications
+    SET status = CAST(:status AS text),
+        attempts = CASE WHEN CAST(:status AS text) = 'PENDING' THEN attempts ELSE attempts + 1 END,
+        last_error = left(CAST(:lastError AS text), 300),
+        sent_at = CASE WHEN CAST(:status AS text) = 'SENT' THEN now() ELSE sent_at END
+    WHERE id = CAST(:notificationId AS bigint)
+    RETURNING id, application_id, template, round, status, attempts, last_error
+)
+SELECT id, application_id, template, round, status, attempts, last_error FROM u]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	notificationId: vars.notificationId,
+	status: payload.status,
+	lastError: payload.lastError
+}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(payload)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Notification not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<flow-ref doc:name="sf-notification-response" name="sf-notification-response" />
+	</flow>
+	<flow name="get:\notifications:loan-system-api-config">
+		<set-variable value="#[output application/java --- attributes.queryParams.status]" doc:name="Set status" variableName="status" />
+		<db:select doc:name="Get notifications" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT id, application_id, template, round, status, attempts, last_error,
+       CAST(EXTRACT(EPOCH FROM created_at) AS bigint) AS created_epoch
+FROM notifications
+WHERE (CAST(:status AS text) IS NULL AND status <> 'SENT') OR status = CAST(:status AS text)
+ORDER BY created_at
+LIMIT 200]]></db:sql>
+			<db:input-parameters><![CDATA[#[{status: vars.status}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var nowSeconds = now() as Number {unit: "seconds"}
+---
+payload map (n) -> {
+	id: n.id,
+	applicationId: n.application_id,
+	template: n.template,
+	round: n.round,
+	status: n.status,
+	attempts: n.attempts,
+	lastError: n.last_error,
+	ageSeconds: nowSeconds - n.created_epoch
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<sub-flow name="sf-notification-response">
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var n = payload[0]
+---
+{
+	id: n.id,
+	applicationId: n.application_id,
+	template: n.template,
+	round: n.round,
+	status: n.status,
+	attempts: n.attempts,
+	lastError: n.last_error
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

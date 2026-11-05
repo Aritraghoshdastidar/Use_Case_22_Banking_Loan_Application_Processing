@@ -104,6 +104,38 @@ WHERE request_id = :requestId]]></db:sql>
 			</otherwise>
 		</choice>
 	</sub-flow>
+	<flow name="get:\applications:loan-system-api-config">
+		<set-variable value="#[output application/java --- attributes.queryParams.stage]" doc:name="Set stage filter" variableName="stageFilter" />
+		<db:select doc:name="Get applications" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT application_id, product_code, requested_amount, stage, stage_reason,
+       CAST(EXTRACT(EPOCH FROM created_at) AS bigint) AS created_epoch
+FROM applications
+WHERE CAST(:stage AS text) IS NULL OR stage = CAST(:stage AS text)
+ORDER BY created_at
+LIMIT :maxRows]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	stage: vars.stageFilter,
+	maxRows: min([(attributes.queryParams.limit default 100) as Number, 500])
+}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var nowSeconds = now() as Number {unit: "seconds"}
+---
+payload map (a) -> {
+	applicationId: a.application_id,
+	productCode: a.product_code,
+	requestedAmount: a.requested_amount,
+	stage: a.stage,
+	stageReason: a.stage_reason,
+	createdAt: a.created_epoch as DateTime {unit: "seconds"},
+	ageMinutes: floor((nowSeconds - a.created_epoch) / 60)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
 	<flow name="get:\applications\(applicationId):loan-system-api-config">
 		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
 		<db:select doc:name="Get application" config-ref="Database_Config">
