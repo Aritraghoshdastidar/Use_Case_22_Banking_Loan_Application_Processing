@@ -134,12 +134,13 @@ sequenceDiagram
 ### 4.2 loan-document-proc (process) [designed]
 1. Consume `loan.verify.q`; dedupe by `messageId`.
 2. Read the product checklist (cached with a short TTL so edits apply without redeploy).
-3. List the applicant folder; wait until each file size is stable (object store snapshot of sizes) before verifying.
-4. Classify every entry: expected and present, expected and missing, present but unexpected (ignored).
-5. Validate each file with a capped **parallel for-each**: extension, content type by magic bytes (a renamed executable is caught), size from metadata (never loaded in full), non-zero, readable first block, SHA-256 by streaming. Duplicate content is detected by digest and counted once.
-6. Quarantine failures with a reason code; compare manifest count and checksums (`MANIFEST_MISMATCH`).
-7. Copy accepted files to `verified/<applicationId>`, record source path, stored path and digest, then remove the staging copy only after the inventory write succeeds. Files are never modified in place.
-8. Complete: stage `VERIFIED` + outbox `SCORE_REQUESTED`. Incomplete: stage `DOCUMENTS_INCOMPLETE` + outbox for the notification. Resubmission skips already-accepted files.
+3. List the applicant folder (S3 connector 8.0.10 against the file store). A prefix with no object at all is an absent folder (`FOLDER_NOT_FOUND`); a folder holding only its zero-byte marker object is an empty folder.
+4. Classify every entry: expected and present, expected and missing, present but unexpected (recorded and ignored).
+5. Validate each file with a capped **parallel for-each**, cheapest check first and nothing read when not needed: stable (older than a quiet period and the same size as the last sighting, held in an object store; otherwise a temporary error and the consumer's retry), extension, size from object metadata (never loaded in full), content type from the first bytes and completeness from the last bytes (a renamed executable is caught), and only then the SHA-256 by streaming. Duplicate content is detected by digest and counted once.
+6. Quarantine failures with a reason code: copy to `quarantine/<applicationId>/`, save the inventory, then remove the staging copy. Files accepted in an earlier round are reused, not checked again.
+7. Compare the declared document count and any declared checksums with what was found; a difference is `MANIFEST_MISMATCH` and nothing is moved. Precedence of incomplete reasons: `FOLDER_NOT_FOUND`, then `MISSING_DOCUMENTS` (including invalid files), then `MANIFEST_MISMATCH`.
+8. Copy accepted files to `verified/<applicationId>`, record source path, stored path and digest, mark the application `VERIFIED` with an outbox `SCORE_REQUESTED`, and only then remove the staging copies (a failed cleanup is logged, the verified copy is the record). Files are never modified in place.
+9. Incomplete: stage `DOCUMENTS_INCOMPLETE` with the exact list recorded in the audit detail + outbox message for the notification. Resubmission resumes verification on the same application.
 
 ### 4.3 loan-scoring-proc (process) [designed]
 - Consume `loan.score.q`; call the bureau mock and read applicant history.
@@ -285,3 +286,4 @@ Constraint: the trial has 1 vCore in Sandbox and no VPC, so everything uses publ
 | 2026-11-04 | v0.1 draft: architecture, lifecycle, components, data, cross-cutting design |
 | 2026-11-05 | v0.2: system API now includes stage change, resubmit, outbox, processed-message claim and release, audit append and read |
 | 2026-11-05 | v0.3: system API complete: products, document rules, scorecard, document inventory, decision save, bureau mock and switch, notifications, application list |
+| 2026-11-06 | v0.4: document verification design refined: stability rule, order of file checks, quarantine and custody ordering, incomplete-reason precedence; connector pins for S3, Object Store, AMQP and Email |

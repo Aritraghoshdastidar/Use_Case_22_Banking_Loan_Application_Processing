@@ -54,6 +54,7 @@ services:
       MINIO_ROOT_USER: loan
       MINIO_ROOT_PASSWORD: loan-secret-123
       MINIO_DEFAULT_BUCKETS: loan-docs
+      MINIO_DOMAIN: localhost   # the Mule S3 connector addresses buckets as <bucket>.localhost; without this MinIO reads the first path segment as the bucket
     ports:
       - "9000:9000"   # S3 API
       - "9001:9001"   # console
