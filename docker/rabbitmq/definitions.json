@@ -14,6 +14,15 @@
     { "name": "loan.decision.q",    "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
     { "name": "loan.decision.q.dlq","vhost": "/", "durable": true, "auto_delete": false, "arguments": {} }
   ],
-  "exchanges": [],
-  "bindings": []
+  "exchanges": [
+    { "name": "loan.exchange", "vhost": "/", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+  ],
+  "bindings": [
+    { "source": "loan.exchange", "vhost": "/", "destination": "loan.verify.q",       "destination_type": "queue", "routing_key": "loan.verify.q",       "arguments": {} },
+    { "source": "loan.exchange", "vhost": "/", "destination": "loan.verify.q.dlq",   "destination_type": "queue", "routing_key": "loan.verify.q.dlq",   "arguments": {} },
+    { "source": "loan.exchange", "vhost": "/", "destination": "loan.score.q",        "destination_type": "queue", "routing_key": "loan.score.q",        "arguments": {} },
+    { "source": "loan.exchange", "vhost": "/", "destination": "loan.score.q.dlq",    "destination_type": "queue", "routing_key": "loan.score.q.dlq",    "arguments": {} },
+    { "source": "loan.exchange", "vhost": "/", "destination": "loan.decision.q",     "destination_type": "queue", "routing_key": "loan.decision.q",     "arguments": {} },
+    { "source": "loan.exchange", "vhost": "/", "destination": "loan.decision.q.dlq", "destination_type": "queue", "routing_key": "loan.decision.q.dlq", "arguments": {} }
+  ]
 }

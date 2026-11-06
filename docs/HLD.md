@@ -165,7 +165,7 @@ sequenceDiagram
 - Batch job for the outbox sweep; Anypoint Monitoring alerts on DLQ depth and unnotified decisions.
 
 ### 4.5 loan-system-api (system) [built: complete]
-- RAML contract with about 30 business-level operations; only this app opens JDBC connections.
+- RAML contract with 24 business-level operations; only this app opens JDBC connections.
 - **Applications:** `POST /applications` (application, outbox message and audit row in one statement, idempotent on request id), `GET /applications/{id}`, `GET /applications?stage=&limit=` (for the underwriting digest), `PUT /applications/{id}/stage` (expected-stage guard, row lock, audit and optional outbox message in one statement), `POST /applications/{id}/resubmit` (only from `DOCUMENTS_INCOMPLETE`, one concurrent winner), `PUT /applications/{id}/documents` (transactional upsert of the inventory), `POST /applications/{id}/decision` (decision, rule hits, stage change, audit row and `DECISION_READY` outbox message in one transaction; a repeat changes nothing), `GET /applications/{id}/audit`.
 - **Reliability:** `GET /outbox/pending`, `POST /outbox/{id}/sent`, `POST /outbox/{id}/failed`, `POST /processed-messages` (claim) and `DELETE /processed-messages/{consumer}/{messageId}` (release), `POST /audit/events`.
 - **Reference data and mocks:** `GET /products/{code}`, `GET /products/{code}/document-rules`, `GET /scorecards/active`, `GET /bureau/reports/{identityRef}` (503 while the switch is off, 404 for an applicant without history), `GET` and `PUT /bureau/switch`.
