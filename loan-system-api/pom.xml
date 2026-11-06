@@ -100,7 +100,8 @@
                     <!-- Test-only values: the local demo key protects nothing real -->
                     <systemPropertyVariables>
                         <mule.env>local</mule.env>
-                        <secure.key>LocalDemoKey1234</secure.key>
+                        <http.listener.port>18701</http.listener.port>
+                        <secure.key>${secure.key}</secure.key>
                     </systemPropertyVariables>
                     <coverage>
                         <runCoverage>true</runCoverage>
