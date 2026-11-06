@@ -19,12 +19,21 @@ The only source of truth for versions. Change one only through a pull request an
 | PostgreSQL JDBC driver | 42.7.4 | declare as a `sharedLibrary` in the Mule Maven plugin, otherwise the connector cannot see it |
 | Docker images | `postgres:16-alpine`, `rabbitmq:3.13-management-alpine`, `mailhog/mailhog:v1.0.1`, `bitnamilegacy/minio:latest` | MinIO image is for local development only |
 
-## Not pinned yet (do not add these dependencies until a version is recorded here)
-| Item | Status |
-|---|---|
-| AMQP (RabbitMQ) connector | to be tested and pinned |
-| S3 or SFTP connector | to be tested; S3 against a MinIO custom endpoint is untested, SFTP is the fallback |
-| Email (SMTP) connector | to be tested and pinned |
+## Messaging
+| Item | Version | Notes |
+|---|---|---|
+| AMQP (RabbitMQ) connector | 1.9.0 (`com.mulesoft.connectors:mule-amqp-connector`, classifier `mule-plugin`) | **Tested**: publish (persistent, with broker confirms), consume and manual ack against the local RabbitMQ. Downloads from the public MuleSoft repository, no Exchange login needed |
+| Email connector (SMTP) | 1.8.0 (`org.mule.connectors:mule-email-connector`, classifier `mule-plugin`) | **Tested**: `email:send` through `email:smtp-config` to MailHog (localhost:1025), mail arrived with the right sender, recipient and subject. Public repository, no Exchange login needed |
+
+Publish to the exchange `loan.exchange` (direct) with the queue name as the routing key; the connector will not accept an empty exchange name, so the nameless default exchange cannot be used. The exchange and its six bindings (three queues and three dead-letter queues) are in `docker/rabbitmq/definitions.json`. On an already-running broker that was created before this change, create them once in the RabbitMQ UI (Exchanges, then Bindings) or recreate the volume with `docker compose down -v`.
+
+## Found but not yet tested (do not add these dependencies until tested and moved up)
+| Item | Latest found | Status |
+|---|---|---|
+| S3 connector (`com.mulesoft.connectors:mule-amazon-s3-connector`) | 5.7.1 | untested; custom endpoint against MinIO to be checked first |
+| SFTP connector (`org.mule.connectors:mule-sftp-connector`) | 2.7.3 | untested; fallback if S3 against MinIO fails |
+| File connector (`org.mule.connectors:mule-file-connector`) | 1.5.6 | untested |
+| Mule Maven plugin | 4.10.3 in use (4.10.4 exists) | stay on 4.10.3 |
 
 ## Local demo values (not secrets)
 - The Docker stack uses throwaway passwords that appear in `docker-compose.yml`.

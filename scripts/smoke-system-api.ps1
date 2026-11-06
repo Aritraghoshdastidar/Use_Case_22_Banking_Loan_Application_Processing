@@ -111,6 +111,14 @@ Check 'one DECISION_READY message queued' (Sql "select count(*) from outbox wher
 Check 'decision for unknown application' (Code POST '/applications/APP-NOPE/decision' $dec) 404
 $fresh = curl.exe -s -X POST "$u/applications" -H "Content-Type: application/json" --data-binary "@$(Body 'app3' ((Get-Content $app -Raw) -replace 'SMOKE-', 'SMOKE3-'))" | ConvertFrom-Json
 Check 'decision for application not in SCORING' (Code POST "/applications/$($fresh.applicationId)/decision" $dec) 409
+Check 'move second application to SCORING' (Code PUT "/applications/$($fresh.applicationId)/stage" $toScoring) 200
+$decl = Body 'decl' ('{"decision":"DECLINED","score":41.5,"scorecardVersion":"SC-1.0","decidingRule":"HP-02","reasonCodes":["HP-02"],"requestedAmount":200000,"correlationId":"' + $corr + '","sourceApp":"smoke","ruleHits":[{"ruleCode":"HP-02","ruleType":"HARD_RULE","triggered":true}]}')
+Check 'save a decline that has no approved terms' (Code POST "/applications/$($fresh.applicationId)/decision" $decl) 201
+$declined = curl.exe -s "$u/applications/$($fresh.applicationId)" | ConvertFrom-Json
+Check 'declined application stage' $declined.stage 'DECLINED'
+Check 'decline keeps the deciding rule' $declined.decision.decidingRule 'HP-02'
+Check 'decline has no approved amount' ($null -eq $declined.decision.approvedAmount) $true
+Check 'decline has no offer expiry' ($null -eq $declined.decision.offerExpiresAt) $true
 
 # ---- bureau mock and its switch
 $rep = curl.exe -s "$u/bureau/reports/ABCDE1234F" | ConvertFrom-Json
