@@ -28,13 +28,14 @@
     </http:listener-config>
 
     <db:config name="Database_Config" doc:name="Database Config (PostgreSQL)">
-        <db:generic-connection url="jdbc:postgresql://${db.host}:${db.port}/${db.name}"
+        <db:generic-connection url="jdbc:postgresql://${db.host}:${db.port}/${db.name}${db.urlParams}"
                                driverClassName="org.postgresql.Driver"
                                user="${db.user}" password="${secure::db.password}">
             <db:pooling-profile maxPoolSize="${db.maxPoolSize}" minPoolSize="${db.minPoolSize}"/>
         </db:generic-connection>
     </db:config>
 
+	<import file="autodiscovery-${mule.env}.xml" />
     <apikit:config name="loan-system-api-config" api="api/loan-system-api.raml"
                    outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus"
                    doc:name="APIkit Router config"/>

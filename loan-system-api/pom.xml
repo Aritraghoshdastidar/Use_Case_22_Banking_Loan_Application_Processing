@@ -3,12 +3,21 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.mycompany</groupId>
+    <groupId>0e154d3d-dba0-4bf1-b57e-c6259885083d</groupId>
     <artifactId>loan-system-api</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>mule-application</packaging>
 
     <name>loan-system-api</name>
+
+    <distributionManagement>
+        <repository>
+            <id>anypoint-exchange</id>
+            <name>Anypoint Exchange</name>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/0e154d3d-dba0-4bf1-b57e-c6259885083d/maven</url>
+            <layout>default</layout>
+        </repository>
+    </distributionManagement>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -128,6 +137,59 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- CloudHub 2.0 deployment (shared space, Sandbox). Used only with: mvn -Pcloud deploy -DmuleDeploy
+             All values come from -D properties set by scripts/deploy-cloud.ps1; nothing secret is stored here. -->
+        <profile>
+            <id>cloud</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.mule.tools.maven</groupId>
+                        <artifactId>mule-maven-plugin</artifactId>
+                        <version>${mule.maven.plugin.version}</version>
+                        <configuration>
+                            <cloudhub2Deployment>
+                                <uri>https://anypoint.mulesoft.com</uri>
+                                <provider>MC</provider>
+                                <environment>${cloud.environment}</environment>
+                                <target>${cloud.target}</target>
+                                <muleVersion>${cloud.muleVersion}</muleVersion>
+                                <releaseChannel>EDGE</releaseChannel>
+                                <javaVersion>17</javaVersion>
+                                <applicationName>${cloud.appName}</applicationName>
+                                <replicas>1</replicas>
+                                <vCores>${cloud.vCores}</vCores>
+                                <connectedAppClientId>${anypoint.clientId}</connectedAppClientId>
+                                <connectedAppClientSecret>${anypoint.clientSecret}</connectedAppClientSecret>
+                                <connectedAppGrantType>client_credentials</connectedAppGrantType>
+                                <deploymentSettings>
+                                    <http>
+                                        <inbound>
+                                            <lastMileSecurity>false</lastMileSecurity>
+                                            <forwardSslSession>false</forwardSslSession>
+                                        </inbound>
+                                    </http>
+                                    <enforceDeployingReplicasAcrossNodes>false</enforceDeployingReplicasAcrossNodes>
+                                    <updateStrategy>rolling</updateStrategy>
+                                    <generateDefaultPublicUrl>true</generateDefaultPublicUrl>
+                                </deploymentSettings>
+                                <properties>
+                                    <mule.env>cloudhub</mule.env>
+                                    <anypoint.platform.client_id>${anypoint.platformClientId}</anypoint.platform.client_id>
+                                </properties>
+                                <secureProperties>
+                                    <secure.key>${cloud.secureKey}</secure.key>
+                                    <anypoint.platform.client_secret>${anypoint.platformClientSecret}</anypoint.platform.client_secret>
+                                </secureProperties>
+                            </cloudhub2Deployment>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
     <repositories>
             <repository>
             <id>anypoint-exchange-v3</id>
