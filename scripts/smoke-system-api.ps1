@@ -131,7 +131,7 @@ Check 'turn bureau off' (Code PUT '/bureau/switch' (Body 'off' '{"enabled":false
 Check 'bureau report while off' (Code GET '/bureau/reports/ABCDE1234F') 503
 Check 'turn bureau on' (Code PUT '/bureau/switch' (Body 'on' '{"enabled":true}')) 200
 Check 'bureau report after switching on' (Code GET '/bureau/reports/ABCDE1234F') 200
-Check 'identity number is not in the request log' ((Select-String -Path 'C:\Users\aritr\AnypointCodeBuilder\runtime\mule-enterprise-standalone-4.12.3\logs\loan-system-api.log' -Pattern 'ABCDE1234F' -Quiet)) $false
+Check 'identity number is not in the request log' ((Select-String -Path (Join-Path $env:USERPROFILE 'tools\mule-local-runtime\logs\loan-system-api.log') -Pattern 'ABCDE1234F' -Quiet)) $false
 
 # ---- notifications
 $nreq = Body 'nreq' ('{"applicationId":"' + $id + '","template":"APPROVED","round":1}')
