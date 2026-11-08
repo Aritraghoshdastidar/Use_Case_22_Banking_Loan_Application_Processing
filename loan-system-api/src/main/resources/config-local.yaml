@@ -16,5 +16,3 @@ db:
   minPoolSize: "1"
 cache:
   productTtlSeconds: "60"
-api:
-  id: "21283935"
