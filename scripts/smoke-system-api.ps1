@@ -149,7 +149,8 @@ Check 'update unknown notification' (Code PUT '/notifications/999999' (Body 'n4'
 Check 'update notification, malformed id' (Code PUT '/notifications/abc' (Body 'n5' '{"status":"SENT"}')) 400
 
 # ---- application list
-$list = curl.exe -s "$u/applications?stage=APPROVED&limit=50" | ConvertFrom-Json
+# the list is oldest first and capped at 500, so ask for the largest page: a database that has seen many test runs holds more than 50 approved applications
+$list = curl.exe -s "$u/applications?stage=APPROVED&limit=500" | ConvertFrom-Json
 Check 'list by stage finds the application' @($list | Where-Object { $_.applicationId -eq $id }).Count 1
 Check 'list entry has an age' ((@($list | Where-Object { $_.applicationId -eq $id })[0].ageMinutes) -ge 0) $true
 
