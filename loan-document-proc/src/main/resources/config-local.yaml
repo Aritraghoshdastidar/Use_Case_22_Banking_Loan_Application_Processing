@@ -36,3 +36,5 @@ retry:
 cache:
   rulesTtlSeconds: "60"
   snapshotTtlHours: "1"
+verify:
+  maxFiles: "20"

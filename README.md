@@ -11,7 +11,7 @@ Design: [docs/HLD.md](docs/HLD.md). Versions: [docs/versions.md](docs/versions.m
 |---|---|---|---|---|
 | loan-system-api | System | 8701 | `loan-system-api/` | The only app that touches PostgreSQL: applications, outbox, audit, dedupe, bureau mock |
 | loan-intake-exp-api | Experience | 8702 | `loan-intake-exp-api/` | Public API. Validates, records the application, answers 202 with a status URL |
-| loan-document-proc | Process | 8703 | `loan-document-proc/` | Reads the applicant's documents from the object store, validates every file, takes custody |
+| loan-document-proc | Process | 8703 | `loan-document-proc/` | Reads the applicant's documents from the object store, validates every file, takes custody. Also offers an upload endpoint that checks files before storing them |
 | loan-scoring-proc | Process | 8704 | `loan-scoring-proc/` | Scorecard SC-1.0, affordability, decision bands, hard policy rules |
 | loan-notification-proc | Process | 8705 | `loan-notification-proc/` | Outbox sweeper (batch job), applicant emails, digest |
 
@@ -64,6 +64,27 @@ curl.exe -s http://localhost:8702/api/applications/<applicationId>/status
 
 Open MailHog to read the applicant's email. The sample folders (`complete-ok`, `missing-payslip` and others) come from `make-samples.ps1`. Custody moves accepted files out of staging, so run `upload-samples.ps1` again before reusing a folder.
 
+### Optional: upload the documents through the checking endpoint
+
+Instead of copying files into the bucket, an applicant can upload them to the document app, which checks every file **before** storing it:
+
+```powershell
+curl.exe -s -X POST "http://localhost:8703/api/staging/my-folder/documents?product=PL" `
+  -F "a=@samples\documents\complete-ok\id_proof.pdf" -F "b=@samples\documents\complete-ok\address_proof.pdf" `
+  -F "c=@samples\documents\complete-ok\payslip_1.pdf" -F "d=@samples\documents\complete-ok\payslip_2.pdf"
+```
+
+- All files pass: `201`, and the files are stored under `staging/my-folder/` with their own names. Submit the application with `"folder":"my-folder"`; verification runs as usual.
+- Any file fails: `422` with a reason per file, and **nothing is stored**. Upload the whole set again.
+- Checks, in order: safe file name, name starts with a document type of the product (`id_proof`, `address_proof`, `payslip`), not empty, size limit of that type, allowed extension, first bytes are really PDF/JPEG/PNG, extension agrees with the content, declared content type agrees, file is complete (not cut short), no duplicate content in the same upload.
+- Bad requests are `400`: folder name not 3 to 64 letters, digits, `_` or `-` (`INVALID_FOLDER`); missing or malformed `product` (`INVALID_PRODUCT`); no checklist for the product (`UNKNOWN_PRODUCT`); no files (`NO_FILES`). More than `verify.maxFiles` (20) files in a folder is `422 TOO_MANY_FILES`.
+- To fix a rejected set, upload again. A name that is already in the folder is replaced.
+- Copying files straight into the bucket still works; the verification step after the queue runs its own checks either way.
+
+`powershell -File scripts\smoke-upload.ps1` proves all of this live (good set approved, each bad sample refused with the right reason, nothing stored, resubmission, bad requests).
+
+The idea of checking files before storing them comes from Member 3's Google Drive version of the document app, which proved that the storage layer can be swapped behind the same contract.
+
 | UI | URL | Login |
 |---|---|---|
 | RabbitMQ | http://localhost:15672 | loan / loan |
@@ -78,7 +99,7 @@ Windows reserves TCP ports 7779 to 8378 on some machines, so the apps use 8701 t
 powershell -File scripts\run-all-munit.ps1    # MUnit for all five apps with coverage; needs no running services
 ```
 
-Expected: 376 tests, 100% application coverage on every app.
+Expected: 386 tests, 100% application coverage on every app.
 
 The live checks come in two groups, because the first two assume nothing downstream consumes their test data.
 
@@ -97,6 +118,7 @@ powershell -File scripts\run-chain.ps1 -Stop
 | Script | What it proves |
 |---|---|
 | `scripts\smoke-document.ps1` | document reconciliation, per-file checks, quarantine and custody |
+| `scripts\smoke-upload.ps1` | the upload endpoint: files checked before storage, 422 with nothing stored, resubmission, bad requests |
 | `scripts\smoke-scoring.ps1` | scoring bands, affordability, hard rules, no sensitive data in logs |
 | `scripts\smoke-notification.ps1` | the batch outbox sweep and the decision consumer |
 | `scripts\smoke-email.ps1` | all four applicant emails through MailHog, retries, mail-server outage. Stops the mail server on purpose, run it alone |

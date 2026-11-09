@@ -132,6 +132,7 @@ sequenceDiagram
 - Autodiscovery and policies (client-id enforcement, rate limiting) on this API.
 
 ### 4.2 loan-document-proc (process) [designed]
+0. Optional way in: `POST /api/staging/{folder}/documents?product=PL` receives a multipart upload and checks every file **before** storing it (safe name, document type from the name, non-empty, size limit, extension, real content from the first bytes, extension and declared type agree, complete file, no duplicate content in the upload). If any file fails the answer is `422` with a reason per file and nothing is stored; otherwise the files are put under `staging/<folder>/` with their own names. Design adapted from Member 3's Google Drive document app. Copying files straight into the bucket remains possible; verification below runs its own checks either way.
 1. Consume `loan.verify.q`; dedupe by `messageId`.
 2. Read the product checklist (cached with a short TTL so edits apply without redeploy).
 3. List the applicant folder (S3 connector 8.0.10 against the file store). A prefix with no object at all is an absent folder (`FOLDER_NOT_FOUND`); a folder holding only its zero-byte marker object is an empty folder.
@@ -287,3 +288,4 @@ Constraint: the trial has 1 vCore in Sandbox and no VPC, so everything uses publ
 | 2026-11-05 | v0.2: system API now includes stage change, resubmit, outbox, processed-message claim and release, audit append and read |
 | 2026-11-05 | v0.3: system API complete: products, document rules, scorecard, document inventory, decision save, bureau mock and switch, notifications, application list |
 | 2026-11-06 | v0.4: document verification design refined: stability rule, order of file checks, quarantine and custody ordering, incomplete-reason precedence; connector pins for S3, Object Store, AMQP and Email |
+| 2026-11-09 | v0.5: optional upload gate in the document app (files checked before storage, from Member 3's Drive version); the storage layer is an adapter, and a Google Drive implementation of the same contract was built and tested separately by Member 3 |

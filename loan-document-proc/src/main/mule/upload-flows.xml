@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd">
+	<!-- Upload gate (optional way in): POST /api/staging/{folder}/documents?product=PL with a multipart body.
+	     Every file is checked BEFORE it is stored (dwl/uploadChecks.dwl, design by Member 3). If any file fails, the answer
+	     is 422 listing every file and nothing is stored; otherwise the files go to staging/{folder}/ under their own names,
+	     which is where the verification step (after the application is submitted) looks for them.
+	     Copying files straight into the bucket still works and is unaffected. -->
+	<flow name="staging-upload-flow">
+		<http:listener doc:name="Listener" config-ref="HTTP_Listener_config" path="/api/staging/{folder}/documents" allowedMethods="POST">
+			<http:response statusCode="#[vars.httpStatus default 201]" />
+			<http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<ee:transform doc:name="Read the request">
+			<ee:message>
+				<ee:set-payload resource="dwl/upload-parse.dwl" />
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Set upload" variableName="upload" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.upload.problem == null]">
+				<set-variable value="#[output application/java --- {productCode: vars.upload.product}]" doc:name="Set app" variableName="app" />
+				<try doc:name="Try">
+					<flow-ref doc:name="sf-load-checklist" name="sf-load-checklist" />
+					<error-handler>
+						<on-error-continue enableNotifications="false" logException="false" doc:name="Unknown product" type="HTTP:NOT_FOUND">
+							<set-variable value="#[null]" doc:name="Set rules" variableName="rules" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+				<s3:list-objects doc:name="List folder" config-ref="S3_Config" bucketName="${store.bucket}" prefix="#[p('store.stagingPrefix') ++ vars.upload.folder ++ '/']" />
+				<set-variable value="#[output application/java --- (payload default []) map ((o) -> o.key[sizeOf(p('store.stagingPrefix') ++ vars.upload.folder ++ '/') to -1])]" doc:name="Set existingNames" variableName="existingNames" />
+				<ee:transform doc:name="Check the files">
+					<ee:message>
+						<ee:set-payload resource="dwl/upload-check.dwl" />
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[payload]" doc:name="Set upload" variableName="upload" />
+			</when>
+		</choice>
+		<choice doc:name="Choice">
+			<when expression="#[vars.upload.state == 'STAGED']">
+				<foreach doc:name="For Each" collection="#[vars.upload.checked]">
+					<set-variable value="#[output application/java --- payload]" doc:name="Set item" variableName="item" />
+					<set-payload value="#[vars.item.content]" doc:name="Set Payload" />
+					<s3:put-object doc:name="Store file" config-ref="S3_Config" bucketName="${store.bucket}" key="#[p('store.stagingPrefix') ++ vars.upload.folder ++ '/' ++ vars.item.file]" contentType="#[vars.item.mime]" />
+				</foreach>
+			</when>
+		</choice>
+		<set-variable value="#[output application/java --- if (vars.upload.state == 'PROBLEM') vars.upload.problem.status else if (vars.upload.state == 'REJECTED') 422 else 201]" doc:name="Set httpStatus" variableName="httpStatus" />
+		<ee:transform doc:name="Build the answer">
+			<ee:message>
+				<ee:set-payload resource="dwl/upload-response.dwl" />
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger" category="com.loan.document.upload" message="#['upload folder=' ++ vars.upload.folder ++ ' state=' ++ vars.upload.state ++ ' files=' ++ (sizeOf(vars.upload.files) as String) ++ ' status=' ++ (vars.httpStatus as String) ++ ' correlationId=' ++ correlationId]" />
+		<error-handler ref="global-error-handler" />
+	</flow>
+</mule>
