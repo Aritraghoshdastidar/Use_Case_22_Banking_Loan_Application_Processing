@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="validation-test-suite.xml" />
+	<munit:before-test name="build-valid-request">
+		<set-variable value="#[{requestId: 'REQ-1', productCode: 'PL', amount: 200000, tenureMonths: 24, applicant: {fullName: 'Asha Verma', dateOfBirth: '1990-05-15', identityRef: 'ABCDE1234F', email: 'asha@example.com', monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48}, documents: {folder: 'complete-ok', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}]}}]" doc:name="Set validRequest" variableName="validRequest" />
+		<set-variable value="#[{code: 'PL', minAmount: 50000, maxAmount: 1000000, minTenureMonths: 6, maxTenureMonths: 60, minAgeAtApplication: 21, maxAgeAtApplication: 60, active: true}]" doc:name="Set product" variableName="product" />
+	</munit:before-test>
+	<munit:test name="valid-request-passes-validation" description="A complete, well-formed request raises nothing">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-validate-request" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="empty-request-lists-every-missing-field" description="Missing mandatory fields give a 400 with a field-level list">
+		<munit:behavior>
+			<set-variable value="#[{}]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-validate-request" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('BAD_REQUEST')]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'productCode']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'amount']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'tenureMonths']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'applicant.monthlyIncome']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'documents.folder']" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="malformed-identity-reference-is-rejected" description="Identity reference must be 5 letters, 4 digits, 1 letter">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .applicant.identityRef -&gt; 'abc123' }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-validate-request" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('BAD_REQUEST')]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.errorDetails)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].field]" is="#[MunitTools::equalTo('applicant.identityRef')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="folder-escaping-the-staging-root-is-rejected" description="A folder with dots, slashes or a drive letter is rejected (path traversal)">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .documents.folder -&gt; '../../secret' }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-validate-request" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('BAD_REQUEST')]" />
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].field]" is="#[MunitTools::equalTo('documents.folder')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="drive-letter-folder-is-rejected" description="C:/windows is not a simple folder name">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .documents.folder -&gt; 'C:/windows' }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-validate-request" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('BAD_REQUEST')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="bad-dates-emails-and-numbers-are-reported-together" description="Several problems are all returned in one response">
+		<munit:behavior>
+			<set-variable value="#[{requestId: 'bad id!', productCode: 'PL', amount: -5, tenureMonths: 12.5, applicant: {fullName: 'A', dateOfBirth: 'not-a-date', identityRef: 'ABCDE1234F', email: 'no-at-sign', monthlyIncome: 0}, documents: {folder: 'ok', documentCount: -1}}]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-validate-request" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'requestId']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'amount']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'tenureMonths']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'applicant.dateOfBirth']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'applicant.email']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'applicant.monthlyIncome']" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(vars.errorDetails map $.field) contains 'documents.documentCount']" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="birth-date-in-the-future-is-rejected" description="Date of birth must be in the past">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .applicant.dateOfBirth -&gt; '2999-01-01' }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-validate-request" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].field]" is="#[MunitTools::equalTo('applicant.dateOfBirth')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="request-within-product-limits-passes" description="Amount, tenure and age inside the limits raise nothing">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-check-limits" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="amount-below-minimum-states-the-limits" description="The message names the minimum and maximum">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .amount -&gt; 10000 }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-check-limits" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('UNPROCESSABLE')]" />
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].field]" is="#[MunitTools::equalTo('amount')]" />
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].message]" is="#[MunitTools::equalTo('Amount must be between 50000 and 1000000 for product PL')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="amount-above-maximum-is-rejected" description="Above the maximum is also outside the limits">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .amount -&gt; 5000000 }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-check-limits" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].field]" is="#[MunitTools::equalTo('amount')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="tenure-outside-limits-is-rejected" description="Tenure of 100 months is above the 60 month maximum">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .tenureMonths -&gt; 100 }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-check-limits" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].message]" is="#[MunitTools::equalTo('Tenure must be between 6 and 60 months for product PL')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="applicant-too-young-is-rejected" description="An applicant under 21 is outside the permitted age range">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .applicant.dateOfBirth -&gt; '2020-01-01' }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-check-limits" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].field]" is="#[MunitTools::equalTo('applicant.dateOfBirth')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="applicant-too-old-is-rejected" description="An applicant over 60 is outside the permitted age range">
+		<munit:behavior>
+			<set-variable value="#[vars.validRequest update { case .applicant.dateOfBirth -&gt; '1950-01-01' }]" doc:name="Set request" variableName="request" />
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try">
+				<flow-ref name="sf-check-limits" />
+				<error-handler>
+					<on-error-continue>
+						<set-variable value="#[error.errorType.identifier]" variableName="caught" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.errorDetails[0].field]" is="#[MunitTools::equalTo('applicant.dateOfBirth')]" />
+		</munit:validation>
+	</munit:test>
+</mule>

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="post:\applications:application\json:loan-intake-exp-api-config">
+		<logger level="INFO" doc:name="Starting" category="com.loan.intake.applications" message="#['application received correlationId=' ++ correlationId]" />
+		<flow-ref doc:name="sf-parse-request" name="sf-parse-request" />
+		<flow-ref doc:name="sf-validate-request" name="sf-validate-request" />
+		<flow-ref doc:name="sf-load-product" name="sf-load-product" />
+		<flow-ref doc:name="sf-check-limits" name="sf-check-limits" />
+		<flow-ref doc:name="sf-create-application" name="sf-create-application" />
+		<set-variable value="202" doc:name="Set httpStatus" variableName="httpStatus" />
+		<set-variable value="#[{'Content-Type': 'application/json', 'Location': vars.statusUrl}]" doc:name="Set outboundHeaders" variableName="outboundHeaders" />
+		<logger level="INFO" doc:name="Completed" category="com.loan.intake.applications" message="#['application accepted applicationId=' ++ vars.applicationId ++ ' correlationId=' ++ correlationId]" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	applicationId: vars.applicationId,
+	statusUrl: vars.statusUrl
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="get:\applications\(applicationId)\status:loan-intake-exp-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<try doc:name="Try">
+			<http:request method="GET" doc:name="Get application" config-ref="System_API_Request_config" path="/applications/{applicationId}">
+				<http:headers><![CDATA[#[output application/java --- {"X-Correlation-ID": correlationId}]]]></http:headers>
+				<http:uri-params><![CDATA[#[{applicationId: vars.applicationId}]]]></http:uri-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="false" logException="false" type="HTTP:NOT_FOUND">
+					<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+					<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+					<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/status-response.dwl" />
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="post:\applications\(applicationId)\resubmit:loan-intake-exp-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<try doc:name="Try">
+			<http:request method="POST" doc:name="Resubmit application" config-ref="System_API_Request_config" path="/applications/{applicationId}/resubmit">
+				<http:headers><![CDATA[#[output application/java --- {"X-Correlation-ID": correlationId}]]]></http:headers>
+				<http:uri-params><![CDATA[#[{applicationId: vars.applicationId}]]]></http:uri-params>
+				<http:response-validator>
+					<http:success-status-code-validator values="0..399,409" />
+				</http:response-validator>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="false" logException="false" type="HTTP:NOT_FOUND">
+					<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+					<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+					<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice">
+			<when expression="#[attributes.statusCode == 409]">
+				<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Resubmission is only allowed while documents are incomplete" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<set-variable value="202" doc:name="Set httpStatus" variableName="httpStatus" />
+		<set-variable value="#[{'Content-Type': 'application/json'}]" doc:name="Set outboundHeaders" variableName="outboundHeaders" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	applicationId: vars.applicationId,
+	statusUrl: p("http.publicBaseUrl") ++ "/applications/" ++ vars.applicationId ++ "/status"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<sub-flow name="sf-parse-request">
+		<try doc:name="Try">
+			<set-variable value="#[output application/java --- payload]" doc:name="Set request" variableName="request" />
+			<error-handler>
+				<on-error-propagate enableNotifications="false" logException="false" type="MULE:EXPRESSION">
+					<set-variable value="BAD_REQUEST" doc:name="Set appError" variableName="appError" />
+					<set-variable value="Request body must be valid JSON" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+					<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="sf-validate-request">
+		<ee:transform doc:name="Transform Message">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="issues" resource="dwl/validate-request.dwl" />
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice">
+			<when expression="#[not isEmpty(vars.issues)]">
+				<set-variable value="#[vars.issues]" doc:name="Set errorDetails" variableName="errorDetails" />
+				<set-variable value="BAD_REQUEST" doc:name="Set appError" variableName="appError" />
+				<set-variable value="The request has missing or invalid fields" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-load-product">
+		<try doc:name="Try">
+			<http:request method="GET" doc:name="Get product" config-ref="System_API_Request_config" path="/products/{code}">
+				<http:headers><![CDATA[#[output application/java --- {"X-Correlation-ID": correlationId}]]]></http:headers>
+				<http:uri-params><![CDATA[#[{code: vars.request.productCode}]]]></http:uri-params>
+			</http:request>
+			<error-handler>
+				<on-error-propagate enableNotifications="false" logException="false" type="HTTP:NOT_FOUND">
+					<set-variable value="#[[{field: 'productCode', message: 'Unknown product code'}]]" doc:name="Set errorDetails" variableName="errorDetails" />
+					<set-variable value="UNPROCESSABLE" doc:name="Set appError" variableName="appError" />
+					<set-variable value="Unknown product code" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+					<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+				</on-error-propagate>
+			</error-handler>
+		</try>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set product" variableName="product" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.product.active == false]">
+				<set-variable value="#[[{field: 'productCode', message: 'Unknown product code'}]]" doc:name="Set errorDetails" variableName="errorDetails" />
+				<set-variable value="UNPROCESSABLE" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Unknown product code" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-check-limits">
+		<ee:transform doc:name="Transform Message">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="limitIssues" resource="dwl/check-limits.dwl" />
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="Choice">
+			<when expression="#[not isEmpty(vars.limitIssues)]">
+				<set-variable value="#[vars.limitIssues]" doc:name="Set errorDetails" variableName="errorDetails" />
+				<set-variable value="UNPROCESSABLE" doc:name="Set appError" variableName="appError" />
+				<set-variable value="The request is outside the limits of the product" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-create-application">
+		<set-variable value="#[output application/java --- uuid()]" doc:name="Set applicationCorrelationId" variableName="applicationCorrelationId" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message />
+			<ee:variables>
+				<ee:set-variable variableName="payloadHash" resource="dwl/payload-hash.dwl" />
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/system-application.dwl" />
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Create application" config-ref="System_API_Request_config" path="/applications">
+			<http:headers><![CDATA[#[output application/java --- {"X-Correlation-ID": correlationId}]]]></http:headers>
+			<http:response-validator>
+				<http:success-status-code-validator values="0..399,409" />
+			</http:response-validator>
+		</http:request>
+		<choice doc:name="Choice">
+			<when expression="#[attributes.statusCode == 409]">
+				<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+				<set-variable value="This request id was already used with a different application" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<set-variable value="#[output application/java --- payload.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<set-variable value="#[output application/java --- p('http.publicBaseUrl') ++ '/applications/' ++ vars.applicationId ++ '/status']" doc:name="Set statusUrl" variableName="statusUrl" />
+	</sub-flow>
+</mule>

@@ -1,0 +1,461 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="custody-test-suite.xml" />
+	<munit:test name="matching-count-agrees" description="Declared 2 and 2 found, no checksums: the manifest agrees">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 2, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}]}}]" variableName="app" />
+			<set-variable value="#[{present: [{fileName: 'f0.pdf'}, {fileName: 'f1.pdf'}]}]" variableName="reconciliation" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/manifest-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.agrees]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.declaredCount]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.foundCount]" is="#[MunitTools::equalTo(2)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="declared-count-above-found-is-a-mismatch" description="Declared 5 but 4 found: MANIFEST_MISMATCH territory (AC6)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 5, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}]}}]" variableName="app" />
+			<set-variable value="#[{present: [{fileName: 'f0.pdf'}, {fileName: 'f1.pdf'}, {fileName: 'f2.pdf'}, {fileName: 'f3.pdf'}]}]" variableName="reconciliation" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/manifest-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.agrees]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[payload.countMatches]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[payload.declaredCount]" is="#[MunitTools::equalTo(5)]" />
+			<munit-tools:assert-that expression="#[payload.foundCount]" is="#[MunitTools::equalTo(4)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="declared-count-below-found-is-a-mismatch" description="Declared 3 but 4 found is also a mismatch">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 3, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}]}}]" variableName="app" />
+			<set-variable value="#[{present: [{fileName: 'f0.pdf'}, {fileName: 'f1.pdf'}, {fileName: 'f2.pdf'}, {fileName: 'f3.pdf'}]}]" variableName="reconciliation" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/manifest-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.agrees]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="matching-checksum-agrees" description="A declared checksum equal to the computed one passes, whatever the letter case">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 2, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF', sha256: 'AA'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}]}}]" variableName="app" />
+			<set-variable value="#[{present: [{fileName: 'f0.pdf'}, {fileName: 'f1.pdf'}]}]" variableName="reconciliation" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/manifest-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.agrees]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.checksumMismatches)]" is="#[MunitTools::equalTo(0)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="different-checksum-is-a-mismatch" description="A declared checksum that differs from the computed one is reported with both values">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 2, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF', sha256: 'ff'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}]}}]" variableName="app" />
+			<set-variable value="#[{present: [{fileName: 'f0.pdf'}, {fileName: 'f1.pdf'}]}]" variableName="reconciliation" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/manifest-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.agrees]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[payload.countMatches]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.checksumMismatches)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.checksumMismatches[0].fileName]" is="#[MunitTools::equalTo('id_proof.pdf')]" />
+			<munit-tools:assert-that expression="#[payload.checksumMismatches[0].declared]" is="#[MunitTools::equalTo('ff')]" />
+			<munit-tools:assert-that expression="#[payload.checksumMismatches[0].found]" is="#[MunitTools::equalTo('aa')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="checksum-of-a-rejected-file-is-not-compared" description="A file that was not accepted has no digest to compare, so it is left out">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 2, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF', sha256: 'ff'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}]}}]" variableName="app" />
+			<set-variable value="#[{present: [{fileName: 'f0.pdf'}, {fileName: 'f1.pdf'}]}]" variableName="reconciliation" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/manifest-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.agrees]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="manifest-check-flow-keeps-the-result" description="The flow stores the result for the stage change">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 5, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}]}}]" variableName="app" />
+			<set-variable value="#[{present: [{fileName: 'f0.pdf'}, {fileName: 'f1.pdf'}, {fileName: 'f2.pdf'}, {fileName: 'f3.pdf'}]}]" variableName="reconciliation" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-manifest" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.manifestCheck.agrees]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[vars.manifestCheck.declaredCount]" is="#[MunitTools::equalTo(5)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="custody-inventory-records-source-stored-path-and-digest" description="Every accepted file is saved with where it came from, where it is kept and its digest (FR11)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222'}]" variableName="app" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+			<set-variable value="#[{unexpected: [{fileName: 'n.txt'}]}]" variableName="reconciliation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/custody-inventory.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.documents)]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].sourcePath]" is="#[MunitTools::equalTo('staging/f/id_proof.pdf')]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].storedPath]" is="#[MunitTools::equalTo('verified/APP-2026-000001/id_proof.pdf')]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].sha256]" is="#[MunitTools::equalTo('aa')]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].status]" is="#[MunitTools::equalTo('ACCEPTED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="verified-stage-body-queues-the-scoring-message" description="The stage change to VERIFIED asks for a SCORE_REQUESTED message and only applies from VERIFYING">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222'}]" variableName="app" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+			<set-variable value="#[{unexpected: [{fileName: 'n.txt'}]}]" variableName="reconciliation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/verified-stage.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.toStage]" is="#[MunitTools::equalTo('VERIFIED')]" />
+			<munit-tools:assert-that expression="#[payload.expectedFromStage]" is="#[MunitTools::equalTo('VERIFYING')]" />
+			<munit-tools:assert-that expression="#[payload.publish.queue]" is="#[MunitTools::equalTo('loan.score.q')]" />
+			<munit-tools:assert-that expression="#[payload.publish.&quot;type&quot;]" is="#[MunitTools::equalTo('SCORE_REQUESTED')]" />
+			<munit-tools:assert-that expression="#[payload.detail.accepted]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.detail.folder]" is="#[MunitTools::equalTo('verified/APP-2026-000001/')]" />
+			<munit-tools:assert-that expression="#[payload.correlationId]" is="#[MunitTools::equalTo('22222222-2222-4222-8222-222222222222')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="incomplete-stage-body-carries-the-mismatch" description="A manifest mismatch is explained in the audit detail">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f'}}]" variableName="app" />
+			<set-variable value="MANIFEST_MISMATCH" variableName="incompleteReason" />
+			<set-variable value="#[{missingFiles: [], unexpected: []}]" variableName="reconciliation" />
+			<set-variable value="#[{missingTypes: [], quarantined: [], duplicates: []}]" variableName="validation" />
+			<set-variable value="#[{declaredCount: 5, foundCount: 4, countMatches: false, checksumMismatches: [], agrees: false}]" variableName="manifestCheck" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/incomplete-stage.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::equalTo('MANIFEST_MISMATCH')]" />
+			<munit-tools:assert-that expression="#[payload.detail.mismatch.declaredCount]" is="#[MunitTools::equalTo(5)]" />
+			<munit-tools:assert-that expression="#[payload.detail.mismatch.foundCount]" is="#[MunitTools::equalTo(4)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="incomplete-stage-body-has-no-mismatch-for-other-reasons" description="Other reasons carry no mismatch section">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f'}}]" variableName="app" />
+			<set-variable value="MANIFEST_MISMATCH" variableName="incompleteReason" />
+			<set-variable value="#[{missingFiles: [], unexpected: []}]" variableName="reconciliation" />
+			<set-variable value="#[{missingTypes: [], quarantined: [], duplicates: []}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/incomplete-stage.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[(payload.detail pluck $$) contains &quot;mismatch&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="custody-copies-saves-marks-and-removes" description="Each accepted file is copied, the inventory and stage are saved, then the staging copies are removed">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222'}]" variableName="app" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+			<set-variable value="#[{unexpected: []}]" variableName="reconciliation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save custody inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-take-custody" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:copy-object" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to verified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save custody inventory" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:delete-object" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-staging-cleanup-does-not-undo-custody" description="If a staging copy cannot be removed the application is still VERIFIED; the verified copy is the record">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222'}]" variableName="app" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+			<set-variable value="#[{unexpected: []}]" variableName="reconciliation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save custody inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="S3:NO_SUCH_KEY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-take-custody" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-copy-stops-before-anything-is-recorded" description="If a copy fails nothing is saved and nothing is removed, so the step runs again">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222'}]" variableName="app" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+			<set-variable value="#[{unexpected: []}]" variableName="reconciliation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="S3:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save custody inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-take-custody" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('CONNECTIVITY')]" />
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save custody inventory" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:delete-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-inventory-save-keeps-staging-and-stage" description="If the inventory cannot be saved the stage is not changed and staging is kept">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222'}]" variableName="app" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+			<set-variable value="#[{unexpected: []}]" variableName="reconciliation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save custody inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-take-custody" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('CONNECTIVITY')]" />
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:delete-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-stage-change-keeps-staging" description="If the stage change fails the staging copies are kept, so the step can run again">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222'}]" variableName="app" />
+			<set-variable value="#[{accepted: [{key: 'staging/f/id_proof.pdf', fileName: 'id_proof.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'aa'}, {key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'X', size: 100, status: 'ACCEPTED', sha256: 'bb'}]}]" variableName="validation" />
+			<set-variable value="#[{unexpected: []}]" variableName="reconciliation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save custody inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark verified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-take-custody" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('CONNECTIVITY')]" />
+			<munit-tools:verify-call processor="s3:delete-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+</mule>

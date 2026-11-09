@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<sub-flow name="sf-list-unnotified">
+		<http:request method="GET" doc:name="Get unsent notifications" config-ref="System_API_Request_config" path="/notifications" />
+		<set-variable value="#[output application/java --- payload]" doc:name="Set unnotified" variableName="unnotified" />
+	</sub-flow>
+	<!-- What an operator can look at: applications whose email has not gone out, with how long they have waited. No personal data. -->
+	<flow name="unnotified-endpoint-flow">
+		<http:listener doc:name="Listener" config-ref="HTTP_Listener_config" path="/api/unnotified" allowedMethods="GET">
+			<http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="sf-list-unnotified" name="sf-list-unnotified" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	count: sizeOf(vars.unnotified),
+	notifications: vars.unnotified map (n) -> {
+		applicationId: n.applicationId,
+		template: n.template,
+		status: n.status,
+		attempts: n.attempts,
+		ageSeconds: n.ageSeconds
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<!-- The alert: an error line that Anypoint Monitoring can alert on. It carries counts and ages only. -->
+	<flow name="unnotified-alert-flow" maxConcurrency="1">
+		<scheduler doc:name="Scheduler">
+			<scheduling-strategy>
+				<fixed-frequency frequency="${notify.alertFrequencyMillis}" startDelay="20000" />
+			</scheduling-strategy>
+		</scheduler>
+		<flow-ref doc:name="sf-list-unnotified" name="sf-list-unnotified" />
+		<set-variable value="#[output application/java --- vars.unnotified filter ((n) -> n.ageSeconds &gt;= (p('notify.alertAfterSeconds') as Number))]" doc:name="Set overdue" variableName="overdue" />
+		<choice doc:name="Choice">
+			<when expression="#[!isEmpty(vars.overdue)]">
+				<logger level="ERROR" doc:name="Logger" category="com.loan.notification.alert" message="#['ALERT applicants not notified count=' ++ (sizeOf(vars.overdue) as String) ++ ' failed=' ++ (sizeOf(vars.overdue filter ((n) -> n.status == 'FAILED')) as String) ++ ' oldestSeconds=' ++ (max(vars.overdue map ((n) -> n.ageSeconds)) as String)]" />
+			</when>
+		</choice>
+	</flow>
+	<!-- Underwriting digest: referred applications still waiting, oldest first, with age and amount -->
+	<flow name="digest-schedule-flow" maxConcurrency="1">
+		<scheduler doc:name="Scheduler">
+			<scheduling-strategy>
+				<cron expression="${digest.cron}" />
+			</scheduling-strategy>
+		</scheduler>
+		<flow-ref doc:name="sf-send-digest" name="sf-send-digest" />
+	</flow>
+	<flow name="digest-endpoint-flow">
+		<http:listener doc:name="Listener" config-ref="HTTP_Listener_config" path="/api/digest" allowedMethods="POST">
+			<http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<flow-ref doc:name="sf-send-digest" name="sf-send-digest" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ referred: sizeOf(vars.digestRows), sent: vars.digestSent == 'true' }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<sub-flow name="sf-send-digest">
+		<http:request method="GET" doc:name="Get referred applications" config-ref="System_API_Request_config" path="/applications">
+			<http:query-params><![CDATA[#[{stage: 'REFERRED', limit: 200}]]]></http:query-params>
+		</http:request>
+		<set-variable value="#[output application/java --- (payload default []) orderBy ((r) -> -(r.ageMinutes default 0))]" doc:name="Set digestRows" variableName="digestRows" />
+		<set-variable value="false" doc:name="Set digestSent" variableName="digestSent" />
+		<choice doc:name="Choice">
+			<when expression="#[!isEmpty(vars.digestRows)]">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/email-digest.dwl" />
+					</ee:message>
+				</ee:transform>
+				<set-variable value="#[output application/java --- payload]" doc:name="Set mail" variableName="mail" />
+				<email:send doc:name="Send digest" config-ref="Email_SMTP" fromAddress="${mail.from}" subject="#[vars.mail.subject]">
+					<email:to-addresses>
+						<email:to-address value="${mail.underwritingTo}" />
+					</email:to-addresses>
+					<email:body contentType="text/plain">
+						<email:content><![CDATA[#[vars.mail.body]]]></email:content>
+					</email:body>
+				</email:send>
+				<set-variable value="true" doc:name="Set digestSent" variableName="digestSent" />
+				<logger level="INFO" doc:name="Logger" category="com.loan.notification.digest" message="#['underwriting digest sent referred=' ++ (sizeOf(vars.digestRows) as String)]" />
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" category="com.loan.notification.digest" message="underwriting digest skipped, nothing is waiting" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

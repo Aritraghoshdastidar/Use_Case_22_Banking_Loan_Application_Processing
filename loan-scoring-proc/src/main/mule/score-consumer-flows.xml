@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd">
+	<flow name="score-consumer-flow">
+		<amqp:listener doc:name="Listener" config-ref="AMQP_Config" queueName="${consumer.queue}" ackMode="MANUAL" numberOfConsumers="1" inboundContentType="text/plain">
+			<reconnect-forever frequency="5000" />
+		</amqp:listener>
+		<set-variable value="#[attributes.ackId]" doc:name="Set ackId" variableName="ackId" />
+		<set-variable value="#[payload as String]" doc:name="Set rawBody" variableName="rawBody" />
+		<set-variable value="${consumer.name}" doc:name="Set consumerName" variableName="consumerName" />
+		<set-variable value="${consumer.queue}" doc:name="Set sourceQueue" variableName="sourceQueue" />
+		<set-variable value="SCORE_REQUESTED" doc:name="Set expectedType" variableName="expectedType" />
+		<flow-ref doc:name="sf-consume-message" name="sf-consume-message" />
+	</flow>
+	<!-- Scoring of one verified application. A decision is always reached: unreadable bureau data is a
+	     business outcome (REFERRED, DATA_UNAVAILABLE), never a retry and never an approval. -->
+	<sub-flow name="sf-score-application">
+		<flow-ref doc:name="sf-load-application" name="sf-load-application" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.app.stage == 'VERIFIED' or vars.app.stage == 'SCORING']">
+				<flow-ref doc:name="sf-start-scoring" name="sf-start-scoring" />
+				<flow-ref doc:name="sf-load-reference" name="sf-load-reference" />
+				<flow-ref doc:name="sf-read-bureau" name="sf-read-bureau" />
+				<flow-ref doc:name="sf-decide" name="sf-decide" />
+				<flow-ref doc:name="sf-save-decision" name="sf-save-decision" />
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" category="com.loan.scoring.score" message="#['scoring skipped applicationId=' ++ vars.app.applicationId ++ ' stage=' ++ vars.app.stage]" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

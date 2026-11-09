@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="notice-module-test-suite.xml" />
+	<munit:test name="wording-helpers-format-money-dates-and-waits" description="Money with thousands separators and two decimals, dates in words, waits in the largest sensible unit">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+import * from modules::notice
+output application/json
+---
+{
+	money: money(1234567.5),
+	small: money(12),
+	home: productLabel("HL"),
+	personal: productLabel("PL"),
+	date: plainDate("2026-12-06T10:00:00Z"),
+	minutes: waiting(30),
+	hours: waiting(150),
+	days: waiting(3000),
+	oneMinute: waiting(1),
+	oneHour: waiting(60),
+	oneDay: waiting(1440),
+	file: fileReason("EMPTY_OR_UNREADABLE"),
+	fileOther: fileReason("SOMETHING"),
+	label: typeLabel([{docType: "A", description: "Alpha"}], "A"),
+	labelMissing: typeLabel(null, "A")
+}]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.money]" is="#[MunitTools::equalTo('1,234,567.50')]" />
+			<munit-tools:assert-that expression="#[payload.small]" is="#[MunitTools::equalTo('12.00')]" />
+			<munit-tools:assert-that expression="#[payload.home]" is="#[MunitTools::equalTo('home loan')]" />
+			<munit-tools:assert-that expression="#[payload.personal]" is="#[MunitTools::equalTo('personal loan')]" />
+			<munit-tools:assert-that expression="#[payload.date]" is="#[MunitTools::equalTo('6 December 2026')]" />
+			<munit-tools:assert-that expression="#[payload.oneMinute]" is="#[MunitTools::equalTo('1 minute')]" />
+			<munit-tools:assert-that expression="#[payload.oneHour]" is="#[MunitTools::equalTo('1 hour')]" />
+			<munit-tools:assert-that expression="#[payload.oneDay]" is="#[MunitTools::equalTo('1 day')]" />
+			<munit-tools:assert-that expression="#[payload.minutes]" is="#[MunitTools::equalTo('30 minutes')]" />
+			<munit-tools:assert-that expression="#[payload.hours]" is="#[MunitTools::equalTo('2 hours')]" />
+			<munit-tools:assert-that expression="#[payload.days]" is="#[MunitTools::equalTo('2 days')]" />
+			<munit-tools:assert-that expression="#[payload.file contains &quot;empty, incomplete&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.fileOther contains &quot;could not be accepted&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.label]" is="#[MunitTools::equalTo('Alpha')]" />
+			<munit-tools:assert-that expression="#[payload.labelMissing]" is="#[MunitTools::equalTo('A')]" />
+		</munit:validation>
+	</munit:test>
+</mule>

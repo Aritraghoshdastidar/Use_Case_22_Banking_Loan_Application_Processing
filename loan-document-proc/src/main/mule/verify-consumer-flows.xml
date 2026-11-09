@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd">
+	<flow name="verify-consumer-flow">
+		<amqp:listener doc:name="Listener" config-ref="AMQP_Config" queueName="${consumer.queue}" ackMode="MANUAL" numberOfConsumers="1" inboundContentType="text/plain">
+			<reconnect-forever frequency="5000" />
+		</amqp:listener>
+		<set-variable value="#[attributes.ackId]" doc:name="Set ackId" variableName="ackId" />
+		<set-variable value="#[payload as String]" doc:name="Set rawBody" variableName="rawBody" />
+		<set-variable value="${consumer.name}" doc:name="Set consumerName" variableName="consumerName" />
+		<set-variable value="${consumer.queue}" doc:name="Set sourceQueue" variableName="sourceQueue" />
+		<set-variable value="VERIFY_REQUESTED" doc:name="Set expectedType" variableName="expectedType" />
+		<flow-ref doc:name="sf-consume-message" name="sf-consume-message" />
+	</flow>
+	<!-- Verification of one application. Missing documents are a business outcome (DOCUMENTS_INCOMPLETE),
+	     not a failure: the message is acknowledged and the applicant is told what to supply. -->
+	<sub-flow name="sf-verify-documents">
+		<flow-ref doc:name="sf-load-application" name="sf-load-application" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.app.stage == 'RECEIVED' or vars.app.stage == 'VERIFYING']">
+				<flow-ref doc:name="sf-start-verification" name="sf-start-verification" />
+				<flow-ref doc:name="sf-load-checklist" name="sf-load-checklist" />
+				<flow-ref doc:name="sf-reconcile-folder" name="sf-reconcile-folder" />
+				<flow-ref doc:name="sf-record-unexpected" name="sf-record-unexpected" />
+				<choice doc:name="Choice">
+					<when expression="#[vars.reconciliation.folderFound == false]">
+						<set-variable value="#[output application/java --- {missingTypes: vars.reconciliation.missingTypes, quarantined: [], duplicates: [], results: []}]" doc:name="Set validation" variableName="validation" />
+						<set-variable value="FOLDER_NOT_FOUND" doc:name="Set incompleteReason" variableName="incompleteReason" />
+						<flow-ref doc:name="sf-mark-incomplete" name="sf-mark-incomplete" />
+					</when>
+					<otherwise>
+						<flow-ref doc:name="sf-validate-files" name="sf-validate-files" />
+						<flow-ref doc:name="sf-store-results" name="sf-store-results" />
+						<choice doc:name="Choice">
+							<when expression="#[vars.validation.complete == false or !isEmpty(vars.reconciliation.missingFiles)]">
+								<set-variable value="MISSING_DOCUMENTS" doc:name="Set incompleteReason" variableName="incompleteReason" />
+								<flow-ref doc:name="sf-mark-incomplete" name="sf-mark-incomplete" />
+							</when>
+							<otherwise>
+								<flow-ref doc:name="sf-check-manifest" name="sf-check-manifest" />
+								<choice doc:name="Choice">
+									<when expression="#[vars.manifestCheck.agrees == false]">
+										<set-variable value="MANIFEST_MISMATCH" doc:name="Set incompleteReason" variableName="incompleteReason" />
+										<flow-ref doc:name="sf-mark-incomplete" name="sf-mark-incomplete" />
+									</when>
+									<otherwise>
+										<flow-ref doc:name="sf-take-custody" name="sf-take-custody" />
+									</otherwise>
+								</choice>
+							</otherwise>
+						</choice>
+					</otherwise>
+				</choice>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" category="com.loan.document.verify" message="#['verification skipped applicationId=' ++ vars.app.applicationId ++ ' stage=' ++ vars.app.stage]" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-load-application">
+		<http:request method="GET" doc:name="Get application" config-ref="System_API_Request_config" path="/applications/{applicationId}">
+			<http:uri-params><![CDATA[#[{applicationId: vars.envelope.applicationId}]]]></http:uri-params>
+		</http:request>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set app" variableName="app" />
+	</sub-flow>
+	<sub-flow name="sf-start-verification">
+		<choice doc:name="Choice">
+			<when expression="#[vars.app.stage == 'RECEIVED']">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/start-verification.dwl" />
+					</ee:message>
+				</ee:transform>
+				<http:request method="PUT" doc:name="Start verification" config-ref="System_API_Request_config" path="/applications/{applicationId}/stage">
+					<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+					<http:response-validator>
+						<http:success-status-code-validator values="200,409" />
+					</http:response-validator>
+				</http:request>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-load-checklist">
+		<ee:cache doc:name="Cache" cachingStrategy-ref="Rules_Cache_Strategy">
+			<http:request method="GET" doc:name="Get document rules" config-ref="System_API_Request_config" path="/products/{code}/document-rules">
+				<http:uri-params><![CDATA[#[{code: vars.app.productCode}]]]></http:uri-params>
+			</http:request>
+		</ee:cache>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set rules" variableName="rules" />
+	</sub-flow>
+	<!-- S3 has no real folders: a folder with no objects at all does not exist (N6); a folder that only has
+	     its marker object exists and is empty (N7), so every required type is reported missing. -->
+	<sub-flow name="sf-reconcile-folder">
+		<set-variable value="#[(vars.app.manifest.folder default '') as String]" doc:name="Set folder" variableName="folder" />
+		<set-variable value="#[p('store.stagingPrefix') ++ vars.folder ++ '/']" doc:name="Set prefix" variableName="prefix" />
+		<choice doc:name="Choice">
+			<when expression="#[!isEmpty(trim(vars.folder)) and !(vars.folder contains '..') and !(vars.folder contains '\\') and !(vars.folder startsWith '/')]">
+				<s3:list-objects doc:name="List folder" config-ref="S3_Config" bucketName="${store.bucket}" prefix="#[vars.prefix]" />
+			</when>
+			<otherwise>
+				<set-payload value="#[output application/java --- []]" doc:name="Set Payload" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Reconcile">
+			<ee:message>
+				<ee:set-payload resource="dwl/reconcile.dwl" />
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Set reconciliation" variableName="reconciliation" />
+		<logger level="INFO" doc:name="Logger" category="com.loan.document.verify" message="#['reconciled applicationId=' ++ vars.app.applicationId ++ ' folderFound=' ++ (vars.reconciliation.folderFound as String) ++ ' present=' ++ (sizeOf(vars.reconciliation.present) as String) ++ ' unexpected=' ++ (sizeOf(vars.reconciliation.unexpected) as String) ++ ' missingTypes=' ++ (sizeOf(vars.reconciliation.missingTypes) as String)]" />
+	</sub-flow>
+	<sub-flow name="sf-record-unexpected">
+		<choice doc:name="Choice">
+			<when expression="#[!isEmpty(vars.reconciliation.unexpected)]">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/unexpected-inventory.dwl" />
+					</ee:message>
+				</ee:transform>
+				<http:request method="PUT" doc:name="Save unexpected files" config-ref="System_API_Request_config" path="/applications/{applicationId}/documents">
+					<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+				</http:request>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-mark-incomplete">
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/incomplete-stage.dwl" />
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Mark incomplete" config-ref="System_API_Request_config" path="/applications/{applicationId}/stage">
+			<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" category="com.loan.document.verify" message="#['documents incomplete applicationId=' ++ vars.app.applicationId ++ ' reason=' ++ vars.incompleteReason]" />
+	</sub-flow>
+</mule>

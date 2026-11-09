@@ -11,3 +11,10 @@ secure-key.txt
 **/src/main/resources/*-local-plain.yaml
 samples/documents/
 samples/checksums.json
+
+# generated for a cloud deployment: never commit
+**/src/main/resources/config-cloudhub.yaml
+**/src/main/resources/secure-cloudhub.yaml
+pom.cloud.xml
+*.env
+.anypoint-m2-settings.xml

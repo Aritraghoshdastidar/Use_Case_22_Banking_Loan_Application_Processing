@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="decision-test-suite.xml" />
+	<munit:test name="strong-applicant-is-approved-as-requested" description="A strong score and an affordable instalment: approved for the amount asked, with the 30-day offer">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('APPROVED')]" />
+			<munit-tools:assert-that expression="#[payload.score]" is="#[MunitTools::equalTo(100)]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('BAND')]" />
+			<munit-tools:assert-that expression="#[payload.scorecardVersion]" is="#[MunitTools::equalTo('SC-1.0')]" />
+			<munit-tools:assert-that expression="#[payload.approvedAmount]" is="#[MunitTools::equalTo(200000)]" />
+			<munit-tools:assert-that expression="#[payload.approvedTenure]" is="#[MunitTools::equalTo(24)]" />
+			<munit-tools:assert-that expression="#[payload.approvedRatePct]" is="#[MunitTools::equalTo(12)]" />
+			<munit-tools:assert-that expression="#[payload.instalment]" is="#[MunitTools::equalTo(9414.69)]" />
+			<munit-tools:assert-that expression="#[payload.offerExpiresAt]" is="#[MunitTools::equalTo('2026-12-06T10:00:00Z')]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes[0]]" is="#[MunitTools::equalTo('SCORE_APPROVED')]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.reasonCodes)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.affordabilityRatio]" is="#[MunitTools::equalTo(0.1177)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;reductionReason&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="every-factor-and-rule-is-recorded-and-accounts-for-the-score" description="Five factor hits and three hard-rule hits; the contributions add up to the score (AC9)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.ruleHits)]" is="#[MunitTools::equalTo(8)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.ruleHits filter ($.ruleType == &quot;FACTOR&quot;))]" is="#[MunitTools::equalTo(5)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.ruleHits filter ($.ruleType == &quot;HARD_RULE&quot;))]" is="#[MunitTools::equalTo(3)]" />
+			<munit-tools:assert-that expression="#[sum(payload.ruleHits filter ($.ruleType == &quot;FACTOR&quot;) map $.contribution)]" is="#[MunitTools::equalTo(payload.score)]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[0].ruleCode]" is="#[MunitTools::equalTo('BUREAU_SCORE')]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[0].weight]" is="#[MunitTools::equalTo(35)]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[0].inputValue]" is="#[MunitTools::equalTo(780)]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[1].inputValue]" is="#[MunitTools::equalTo(0.2157)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="middling-bureau-score-gives-partial-points" description="Bureau 665 and one missed payment: 15.17 and 10.00 contribute, total 75.17">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 665, missedPayments24m: 1, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.score]" is="#[MunitTools::equalTo(75.17)]" />
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('APPROVED')]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[0].points]" is="#[MunitTools::equalTo(43.33)]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[0].contribution]" is="#[MunitTools::equalTo(15.17)]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[4].contribution]" is="#[MunitTools::equalTo(10)]" />
+			<munit-tools:assert-that expression="#[sum(payload.ruleHits filter ($.ruleType == &quot;FACTOR&quot;) map $.contribution)]" is="#[MunitTools::equalTo(payload.score)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="score-between-50-and-70-is-referred" description="A middling score is referred for review, with no approved terms">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 300000, requestedTenure: 36, monthlyIncome: 70000, monthlyObligations: 15000, employmentMonths: 20, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 665, missedPayments24m: 1, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.score]" is="#[MunitTools::equalTo(63.4)]" />
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('REFERRED')]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('BAND')]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes[0]]" is="#[MunitTools::equalTo('SCORE_NEEDS_REVIEW')]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedAmount&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;instalment&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;offerExpiresAt&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="score-below-50-is-declined-with-reasons" description="A weak bureau score, missed payments and a short job: declined, with a reason code for each weak factor">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 12, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 540, missedPayments24m: 3, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.score]" is="#[MunitTools::equalTo(38)]" />
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('DECLINED')]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('BAND')]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes[0]]" is="#[MunitTools::equalTo('SCORE_BELOW_THRESHOLD')]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes contains &quot;LOW_BUREAU_SCORE&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes contains &quot;MISSED_PAYMENTS&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes contains &quot;SHORT_EMPLOYMENT&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedAmount&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="active-default-declines-despite-a-high-score" description="HP-02 overrides a score of 100 and is the deciding rule (N19, AC12)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 790, missedPayments24m: 0, activeDefault: true}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.score]" is="#[MunitTools::equalTo(100)]" />
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('DECLINED')]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('HP-02')]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes[0]]" is="#[MunitTools::equalTo('HP-02')]" />
+			<munit-tools:assert-that expression="#[(payload.ruleHits filter ($.ruleCode == &quot;HP-02&quot;))[0].triggered]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.ruleHits)]" is="#[MunitTools::equalTo(8)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedAmount&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="age-at-maturity-above-the-limit-declines" description="A home loan that ends at 76 with a limit of 70 is declined by HP-01 with the age recorded (N4)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 1000000, requestedTenure: 240, monthlyIncome: 200000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1970-01-01'}]" variableName="app" />
+			<set-variable value="#[{code: 'HL', annualRatePct: 9, minAmount: 500000, maxAgeAtMaturity: 70, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('DECLINED')]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('HP-01')]" />
+			<munit-tools:assert-that expression="#[(payload.ruleHits filter ($.ruleCode == &quot;HP-01&quot;))[0].inputValue]" is="#[MunitTools::equalTo(76)]" />
+			<munit-tools:assert-that expression="#[(payload.ruleHits filter ($.ruleCode == &quot;HP-01&quot;))[0].triggered]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="age-at-maturity-at-the-limit-is-allowed" description="Exactly at the limit does not fire HP-01">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 1000000, requestedTenure: 240, monthlyIncome: 200000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1976-01-01'}]" variableName="app" />
+			<set-variable value="#[{code: 'HL', annualRatePct: 9, minAmount: 500000, maxAgeAtMaturity: 70, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[(payload.ruleHits filter ($.ruleCode == &quot;HP-01&quot;))[0].triggered]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload.ruleHits filter ($.ruleCode == &quot;HP-01&quot;))[0].inputValue]" is="#[MunitTools::equalTo(70)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="instalment-above-the-ceiling-is-approved-at-a-reduced-amount" description="The requested instalment is 55% of net income against a ceiling of 50%: approved for 451,000 with the reason stated (N18, AC10)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 500000, requestedTenure: 36, monthlyIncome: 50000, monthlyObligations: 20000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('APPROVED')]" />
+			<munit-tools:assert-that expression="#[payload.score]" is="#[MunitTools::equalTo(80)]" />
+			<munit-tools:assert-that expression="#[payload.requestedAmount]" is="#[MunitTools::equalTo(500000)]" />
+			<munit-tools:assert-that expression="#[payload.approvedAmount]" is="#[MunitTools::equalTo(451000)]" />
+			<munit-tools:assert-that expression="#[payload.reductionReason]" is="#[MunitTools::equalTo('AFFORDABILITY_REDUCED')]" />
+			<munit-tools:assert-that expression="#[payload.instalment]" is="#[MunitTools::equalTo(14979.65)]" />
+			<munit-tools:assert-that expression="#[payload.affordabilityRatio]" is="#[MunitTools::equalTo(0.5536)]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes[1]]" is="#[MunitTools::equalTo('AFFORDABILITY_REDUCED')]" />
+			<munit-tools:assert-that expression="#[payload.approvedAmount &lt; payload.requestedAmount]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="no-valid-reduced-amount-declines-by-hp-03" description="Net income so small that even the smallest loan does not fit: HP-03 declines, never an approval at the requested amount">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 30000, monthlyObligations: 27000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('DECLINED')]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('HP-03')]" />
+			<munit-tools:assert-that expression="#[(payload.ruleHits filter ($.ruleCode == &quot;HP-03&quot;))[0].triggered]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedAmount&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="no-net-income-declines-by-hp-03" description="Obligations equal to income leave nothing to pay an instalment from: HP-03, and no ratio is invented">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 30000, monthlyObligations: 30000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('DECLINED')]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('HP-03')]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;affordabilityRatio&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unreadable-bureau-data-is-referred-never-approved" description="No bureau report: REFERRED with reason DATA_UNAVAILABLE, no score, no approved terms, even for a perfect application (N17, AC11)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[null]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('REFERRED')]" />
+			<munit-tools:assert-that expression="#[payload.decidingRule]" is="#[MunitTools::equalTo('DATA_UNAVAILABLE')]" />
+			<munit-tools:assert-that expression="#[payload.reasonCodes[0]]" is="#[MunitTools::equalTo('DATA_UNAVAILABLE')]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;score&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedAmount&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.ruleHits)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[0].ruleCode]" is="#[MunitTools::equalTo('DATA_UNAVAILABLE')]" />
+			<munit-tools:assert-that expression="#[payload.ruleHits[0].triggered]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="score-on-the-approval-threshold-is-approved" description="Thresholds are inclusive at the lower edge of each band">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 100, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('APPROVED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="score-just-below-the-approval-threshold-is-referred" description="Thresholds are inclusive at the lower edge of each band">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 100.01, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('REFERRED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="score-on-the-referral-threshold-is-referred" description="Thresholds are inclusive at the lower edge of each band">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 540, missedPayments24m: 3, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('REFERRED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="score-just-below-the-referral-threshold-is-declined" description="Thresholds are inclusive at the lower edge of each band">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50.01, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 540, missedPayments24m: 3, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.decision]" is="#[MunitTools::equalTo('DECLINED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="fields-without-a-value-are-left-out" description="The system API rejects nulls, so a declined decision carries no approved terms at all">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 12, dateOfBirth: '1990-05-15'}]" variableName="app" />
+			<set-variable value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" variableName="product" />
+			<set-variable value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" variableName="scorecard" />
+			<set-variable value="#[{bureauScore: 540, missedPayments24m: 3, activeDefault: false}]" variableName="bureau" />
+			<set-variable value="#[|2026-11-06|]" variableName="today" />
+			<set-variable value="#[|2026-11-06T10:00:00Z|]" variableName="nowUtc" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/decide.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedAmount&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedTenure&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;approvedRatePct&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;instalment&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;reductionReason&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload pluck $$) contains &quot;offerExpiresAt&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.ruleHits filter ($.inputValue == null and $.ruleType == &quot;FACTOR&quot;))]" is="#[MunitTools::equalTo(0)]" />
+		</munit:validation>
+	</munit:test>
+</mule>

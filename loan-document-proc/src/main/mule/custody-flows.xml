@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd">
+	<!-- The declared document count and any declared checksums must agree with what was found.
+	     A difference is an incomplete submission, never a reason to carry on with the payload alone. -->
+	<sub-flow name="sf-check-manifest">
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/manifest-check.dwl" />
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Set manifestCheck" variableName="manifestCheck" />
+		<logger level="INFO" doc:name="Logger" category="com.loan.document.verify" message="#['manifest check applicationId=' ++ vars.app.applicationId ++ ' declared=' ++ (vars.manifestCheck.declaredCount as String) ++ ' found=' ++ (vars.manifestCheck.foundCount as String) ++ ' checksumMismatches=' ++ (sizeOf(vars.manifestCheck.checksumMismatches) as String)]" />
+	</sub-flow>
+	<!-- Custody: accepted files are copied (never changed in place) into verified/&lt;applicationId&gt;/ and the
+	     inventory records source path, stored path and digest. The staging copy is removed last, after the
+	     inventory and the stage change are saved, so a failure earlier leaves everything to run again. -->
+	<sub-flow name="sf-take-custody">
+		<foreach doc:name="For Each" collection="#[vars.validation.accepted]">
+			<s3:copy-object doc:name="Copy to verified" config-ref="S3_Config" sourceBucketName="${store.bucket}" sourceKey="#[payload.key]" destinationBucketName="${store.bucket}" destinationKey="#[p('store.verifiedPrefix') ++ vars.app.applicationId ++ '/' ++ payload.fileName]" />
+		</foreach>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/custody-inventory.dwl" />
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Save custody inventory" config-ref="System_API_Request_config" path="/applications/{applicationId}/documents">
+			<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+		</http:request>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/verified-stage.dwl" />
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Mark verified" config-ref="System_API_Request_config" path="/applications/{applicationId}/stage">
+			<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+		</http:request>
+		<try doc:name="Try">
+			<foreach doc:name="For Each" collection="#[vars.validation.accepted]">
+				<s3:delete-object doc:name="Remove from staging" config-ref="S3_Config" bucketName="${store.bucket}" key="#[payload.key]" />
+			</foreach>
+			<error-handler>
+				<on-error-continue enableNotifications="false" logException="false" doc:name="On Error Continue">
+					<logger level="WARN" doc:name="Logger" category="com.loan.document.verify" message="#['staging copies not removed applicationId=' ++ vars.app.applicationId ++ ', the verified copies are the record. error=' ++ (error.description default '')]" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Logger" category="com.loan.document.verify" message="#['verified applicationId=' ++ vars.app.applicationId ++ ' documents=' ++ (sizeOf(vars.validation.accepted) as String)]" />
+	</sub-flow>
+</mule>

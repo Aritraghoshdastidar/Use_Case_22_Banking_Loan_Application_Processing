@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<sub-flow name="sf-ensure-notification">
+		<http:request method="POST" doc:name="Ensure notification" config-ref="System_API_Request_config" path="/notifications">
+			<http:body><![CDATA[#[output application/json --- {applicationId: vars.app.applicationId, template: vars.template, round: vars.round}]]]></http:body>
+		</http:request>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set notification" variableName="notification" />
+	</sub-flow>
+	<!-- Build and send one email. If the mail server fails, only this notification is marked for a later retry:
+	     the decision, its audit and the stage are never touched, and nothing is scored again. -->
+	<sub-flow name="sf-notify">
+		<flow-ref doc:name="sf-load-notice-data" name="sf-load-notice-data" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.template == 'APPROVED']">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/email-approved.dwl" />
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.template == 'DECLINED']">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/email-declined.dwl" />
+					</ee:message>
+				</ee:transform>
+			</when>
+			<when expression="#[vars.template == 'REFERRED']">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/email-referred.dwl" />
+					</ee:message>
+				</ee:transform>
+			</when>
+			<otherwise>
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/email-documents-missing.dwl" />
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set mail" variableName="mail" />
+		<set-variable value="false" doc:name="Set sent" variableName="sent" />
+		<try doc:name="Try">
+			<flow-ref doc:name="sf-send-email" name="sf-send-email" />
+			<set-variable value="true" doc:name="Set sent" variableName="sent" />
+			<error-handler>
+				<on-error-continue enableNotifications="false" logException="false" doc:name="On Error Continue">
+					<set-variable value="#['EMAIL:' ++ (error.errorType.identifier default 'ERROR')]" doc:name="Set sendError" variableName="sendError" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice">
+			<when expression="#[vars.sent == 'true']">
+				<flow-ref doc:name="sf-mark-sent" name="sf-mark-sent" />
+				<flow-ref doc:name="sf-record-notified" name="sf-record-notified" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="sf-mark-retry" name="sf-mark-retry" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<!-- Only a missing-documents email needs more than the application: what exactly is missing comes from the audit entry written when the application was set to DOCUMENTS_INCOMPLETE -->
+	<sub-flow name="sf-load-notice-data">
+		<choice doc:name="Choice">
+			<when expression="#[vars.template == 'DOCUMENTS_MISSING']">
+				<http:request method="GET" doc:name="Get audit trail" config-ref="System_API_Request_config" path="/applications/{applicationId}/audit">
+					<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+				</http:request>
+				<set-variable value="#[output application/java --- (((payload.events default []) filter ((e) -> e.toStage == 'DOCUMENTS_INCOMPLETE' and (e.detail.round default 1) == vars.round))[-1].detail) default {}]" doc:name="Set incomplete" variableName="incomplete" />
+				<http:request method="GET" doc:name="Get document rules" config-ref="System_API_Request_config" path="/products/{code}/document-rules">
+					<http:uri-params><![CDATA[#[{code: vars.app.productCode}]]]></http:uri-params>
+				</http:request>
+				<set-variable value="#[output application/java --- payload]" doc:name="Set rules" variableName="rules" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-send-email">
+		<email:send doc:name="Send email" config-ref="Email_SMTP" fromAddress="${mail.from}" subject="#[vars.mail.subject]">
+			<email:to-addresses>
+				<email:to-address value="#[vars.app.email]" />
+			</email:to-addresses>
+			<email:body contentType="text/plain">
+				<email:content><![CDATA[#[vars.mail.body]]]></email:content>
+			</email:body>
+		</email:send>
+	</sub-flow>
+	<sub-flow name="sf-mark-sent">
+		<http:request method="PUT" doc:name="Mark notification sent" config-ref="System_API_Request_config" path="/notifications/{notificationId}">
+			<http:body><![CDATA[#[output application/json --- {status: 'SENT'}]]]></http:body>
+			<http:uri-params><![CDATA[#[{notificationId: vars.notification.id}]]]></http:uri-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" category="com.loan.notification.notify" message="#['email sent applicationId=' ++ vars.app.applicationId ++ ' template=' ++ vars.template]" />
+	</sub-flow>
+	<!-- The last step of the audit trail: the applicant has been told -->
+	<sub-flow name="sf-record-notified">
+		<http:request method="POST" doc:name="Record notified" config-ref="System_API_Request_config" path="/audit/events">
+			<http:body><![CDATA[#[output application/json --- {
+	applicationId: vars.app.applicationId,
+	correlationId: vars.app.correlationId,
+	event: 'NOTIFIED',
+	fromStage: vars.app.stage,
+	toStage: 'NOTIFIED',
+	sourceApp: p('app.name'),
+	detail: {template: vars.template, round: vars.round}
+}]]]></http:body>
+		</http:request>
+	</sub-flow>
+	<!-- The mail server could not be reached: keep the notification for another try, up to a limit.
+	     The error is recorded by type only, because an error text could carry the recipient. -->
+	<sub-flow name="sf-mark-retry">
+		<set-variable value="#[if (((vars.notification.attempts default 0) as Number) + 1 &gt;= (p('notify.maxAttempts') as Number)) 'FAILED' else 'RETRYING']" doc:name="Set retryStatus" variableName="retryStatus" />
+		<http:request method="PUT" doc:name="Mark notification for retry" config-ref="System_API_Request_config" path="/notifications/{notificationId}">
+			<http:body><![CDATA[#[output application/json --- {status: vars.retryStatus, lastError: vars.sendError}]]]></http:body>
+			<http:uri-params><![CDATA[#[{notificationId: vars.notification.id}]]]></http:uri-params>
+		</http:request>
+		<choice doc:name="Choice">
+			<when expression="#[vars.retryStatus == 'FAILED']">
+				<logger level="ERROR" doc:name="Logger" category="com.loan.notification.alert" message="#['ALERT notification could not be sent and will not be tried again applicationId=' ++ vars.app.applicationId ++ ' template=' ++ vars.template]" />
+			</when>
+			<otherwise>
+				<logger level="WARN" doc:name="Logger" category="com.loan.notification.notify" message="#['email not sent, will retry applicationId=' ++ vars.app.applicationId ++ ' template=' ++ vars.template ++ ' error=' ++ vars.sendError]" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>

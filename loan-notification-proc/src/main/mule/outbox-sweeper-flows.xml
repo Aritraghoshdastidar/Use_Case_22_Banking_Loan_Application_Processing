@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd">
+	<!-- Transactional outbox, second half: the system API wrote the message in the same
+	     transaction as the application, this flow moves it to RabbitMQ.
+	     Delivery is at-least-once: if the app dies after the publish and before /sent,
+	     the row is still PENDING and is published again, so every consumer dedupes. -->
+	<!-- The sweep is a batch job: the pending rows are the input, each row is one record, records are published in blocks
+	     and the job reports how many went out and how many failed. A failed publish never fails the record: it is
+	     reported to the system API and the row stays PENDING for the next sweep.
+	     A batch job runs in the background, so the scheduler flow could start a second sweep while the first is still
+	     running. The guard in the object store (a lock that also expires on its own) prevents that. -->
+	<flow name="outbox-sweeper-flow" maxConcurrency="1">
+		<scheduler doc:name="Scheduler">
+			<scheduling-strategy>
+				<fixed-frequency frequency="${sweeper.frequencyMillis}" startDelay="10000" />
+			</scheduling-strategy>
+		</scheduler>
+		<os:contains doc:name="Contains sweep lock" key="sweepRunning" objectStore="Sweep_Lock_Store" target="sweepRunning" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.sweepRunning == false]">
+				<http:request method="GET" doc:name="Get pending outbox" config-ref="System_API_Request_config" path="/outbox/pending">
+					<http:query-params><![CDATA[#[{limit: p('sweeper.batchSize')}]]]></http:query-params>
+				</http:request>
+				<choice doc:name="Choice">
+					<when expression="#[!isEmpty(payload)]">
+						<logger level="INFO" doc:name="Logger" category="com.loan.notification.sweeper" message="#['pending outbox rows=' ++ (sizeOf(payload) as String)]" />
+						<os:store doc:name="Store sweep lock" key="sweepRunning" objectStore="Sweep_Lock_Store">
+							<os:value>#[true]</os:value>
+						</os:store>
+						<flow-ref doc:name="outbox-sweep-batch-flow" name="outbox-sweep-batch-flow" />
+					</when>
+				</choice>
+			</when>
+			<otherwise>
+				<logger level="INFO" doc:name="Logger" category="com.loan.notification.sweeper" message="previous sweep still running, skipped" />
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="outbox-sweep-batch-flow">
+		<batch:job jobName="outbox-sweep-batch" blockSize="${sweeper.blockSize}" maxFailedRecords="-1" doc:name="Batch Job">
+			<batch:process-records>
+				<batch:step name="publish-step">
+					<flow-ref doc:name="sf-publish-outbox-row" name="sf-publish-outbox-row" />
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete>
+				<flow-ref doc:name="sf-finish-sweep" name="sf-finish-sweep" />
+			</batch:on-complete>
+		</batch:job>
+	</flow>
+	<sub-flow name="sf-finish-sweep">
+		<try doc:name="Try">
+			<os:remove doc:name="Remove sweep lock" key="sweepRunning" objectStore="Sweep_Lock_Store" />
+			<error-handler>
+				<on-error-continue enableNotifications="false" logException="false" type="OS:KEY_NOT_FOUND" doc:name="Lock already expired" />
+			</error-handler>
+		</try>
+		<logger level="INFO" doc:name="Logger" category="com.loan.notification.sweeper" message="#['sweep finished records=' ++ (payload.totalRecords as String) ++ ' ok=' ++ (payload.successfulRecords as String) ++ ' failed=' ++ (payload.failedRecords as String)]" />
+	</sub-flow>
+	<sub-flow name="sf-publish-outbox-row">
+		<set-variable value="#[output application/java --- payload.messageId]" doc:name="Set messageId" variableName="messageId" />
+		<set-variable value="#[output application/java --- payload.queue]" doc:name="Set queueName" variableName="queueName" />
+		<set-variable value="#[output application/java --- payload.payload]" doc:name="Set envelope" variableName="envelope" />
+		<set-variable value="false" doc:name="Set published" variableName="published" />
+		<try doc:name="Try">
+			<amqp:publish doc:name="Publish" config-ref="AMQP_Config" exchangeName="${amqp.exchange}" deliveryMode="PERSISTENT" requestBrokerConfirms="true" mandatory="true">
+				<amqp:routing-keys>
+					<amqp:routing-key value="#[vars.queueName]" />
+				</amqp:routing-keys>
+				<amqp:message>
+					<amqp:body><![CDATA[#[output application/json --- vars.envelope]]]></amqp:body>
+					<amqp:properties contentType="application/json" messageId="#[vars.messageId]" correlationId="#[vars.envelope.correlationId]" />
+				</amqp:message>
+			</amqp:publish>
+			<set-variable value="true" doc:name="Set published" variableName="published" />
+			<error-handler>
+				<on-error-continue enableNotifications="true" logException="false" doc:name="On Error Continue">
+					<logger level="WARN" doc:name="Logger" category="com.loan.notification.sweeper" message="#['publish failed messageId=' ++ vars.messageId ++ ' queue=' ++ vars.queueName ++ ' error=' ++ (error.errorType.identifier default '')]" />
+					<set-variable value="#[(error.description default 'publish failed')]" doc:name="Set publishError" variableName="publishError" />
+					<http:request method="POST" doc:name="Mark failed" config-ref="System_API_Request_config" path="/outbox/{messageId}/failed">
+						<http:body><![CDATA[#[output application/json --- {error: vars.publishError}]]]></http:body>
+						<http:uri-params><![CDATA[#[{messageId: vars.messageId}]]]></http:uri-params>
+					</http:request>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice">
+			<when expression="#[vars.published == 'true']">
+				<http:request method="POST" doc:name="Mark sent" config-ref="System_API_Request_config" path="/outbox/{messageId}/sent">
+					<http:uri-params><![CDATA[#[{messageId: vars.messageId}]]]></http:uri-params>
+				</http:request>
+				<logger level="INFO" doc:name="Logger" category="com.loan.notification.sweeper" message="#['published messageId=' ++ vars.messageId ++ ' queue=' ++ vars.queueName]" />
+			</when>
+		</choice>
+	</sub-flow>
+</mule>

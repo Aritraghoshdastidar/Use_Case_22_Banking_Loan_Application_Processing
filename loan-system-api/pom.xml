@@ -3,7 +3,7 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>0e154d3d-dba0-4bf1-b57e-c6259885083d</groupId>
+    <groupId>ANYPOINT-ORG-ID</groupId>
     <artifactId>loan-system-api</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>mule-application</packaging>
@@ -14,7 +14,7 @@
         <repository>
             <id>anypoint-exchange</id>
             <name>Anypoint Exchange</name>
-            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/0e154d3d-dba0-4bf1-b57e-c6259885083d/maven</url>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/ANYPOINT-ORG-ID/maven</url>
             <layout>default</layout>
         </repository>
     </distributionManagement>

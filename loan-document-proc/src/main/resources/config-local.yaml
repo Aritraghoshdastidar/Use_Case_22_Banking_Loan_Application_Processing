@@ -1,0 +1,38 @@
+app:
+  name: "loan-document-proc"
+http:
+  listener:
+    host: "0.0.0.0"
+    port: "8703"
+    basePath: "/api/*"
+system:
+  api:
+    host: "localhost"
+    port: "8701"
+    protocol: "HTTP"
+    basePath: "/api"
+    timeoutMillis: "10000"
+amqp:
+  host: "localhost"
+  port: "5672"
+  virtualHost: "/"
+  user: "loan"
+  exchange: "loan.exchange"
+store:
+  endpoint: "http://localhost:9000"
+  region: "us-east-1"
+  accessKey: "loan"
+  bucket: "loan-docs"
+  stagingPrefix: "staging/"
+  quarantinePrefix: "quarantine/"
+  verifiedPrefix: "verified/"
+  stableSeconds: "3"
+consumer:
+  name: "document-proc"
+  queue: "loan.verify.q"
+retry:
+  baseMillis: "2000"
+  maxRetries: "3"
+cache:
+  rulesTtlSeconds: "60"
+  snapshotTtlHours: "1"
