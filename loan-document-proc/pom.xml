@@ -166,9 +166,11 @@
                                 </deploymentSettings>
                                 <properties>
                                     <mule.env>cloudhub</mule.env>
+                                    <anypoint.platform.client_id>${anypoint.platformClientId}</anypoint.platform.client_id>
                                 </properties>
                                 <secureProperties>
                                     <secure.key>${cloud.secureKey}</secure.key>
+                                    <anypoint.platform.client_secret>${anypoint.platformClientSecret}</anypoint.platform.client_secret>
                                 </secureProperties>
                             </cloudhub2Deployment>
                         </configuration>

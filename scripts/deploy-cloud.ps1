@@ -55,7 +55,7 @@ if ($App -eq 'all') {
     foreach ($n in $order) {
         Deploy-One $n
         # the apps deployed next need the public address of the system API, and the notification emails need the intake address
-        if ($n -in 'loan-system-api', 'loan-intake-exp-api') { & $py (Join-Path $PSScriptRoot 'setup-cloud.py') urls --env $settingsFile }
+        if ($n -in 'loan-system-api', 'loan-intake-exp-api', 'loan-document-proc') { & $py (Join-Path $PSScriptRoot 'setup-cloud.py') urls --env $settingsFile }
     }
     & $py (Join-Path $PSScriptRoot 'setup-cloud.py') urls --env $settingsFile
 }

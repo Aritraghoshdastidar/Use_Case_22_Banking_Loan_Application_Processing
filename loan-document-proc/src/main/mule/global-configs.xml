@@ -13,6 +13,7 @@ http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/
 	<global-property doc:name="Global Property" name="mule.env" value="local" />
 	<configuration-properties doc:name="Configuration properties" file="config-${mule.env}.yaml" />
 	<configuration doc:name="Configuration" defaultErrorHandler-ref="global-error-handler" />
+	<import file="autodiscovery-${mule.env}.xml" />
 	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" file="secure-${mule.env}.yaml" key="${secure.key}" />
 	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
 		<http:listener-connection host="${http.listener.host}" port="${http.listener.port}" />

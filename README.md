@@ -154,7 +154,7 @@ powershell -File scripts\make-samples.ps1
 python scripts\setup-cloud.py db                      # schema and seed data into your hosted PostgreSQL
 python scripts\setup-cloud.py broker                  # exchange, queues and bindings on your hosted RabbitMQ
 python scripts\setup-cloud.py samples                 # sample documents into your bucket under staging/
-python scripts\setup-cloud.py api-manager             # publish the API specs, register both APIs, apply the policies, create a demo client
+python scripts\setup-cloud.py api-manager             # publish the API specs, register the three APIs, apply the policies, create a demo client with a contract for each public API
 powershell -File scripts\deploy-cloud.ps1 -App all    # system API first, then the other four; each deploy takes a few minutes
 python scripts\cloud-e2e.py complete-ok               # APPROVED, one email, three consumer claims
 python scripts\setup-cloud.py samples                 # the accepted files leave staging, so upload again
@@ -165,7 +165,7 @@ What the scripts do:
 - `setup-cloud.py config` (run for you by the deploy script) generates `config-cloudhub.yaml` from each app's `config-local.yaml` with your hosts, and `secure-cloudhub.yaml` with your passwords encrypted under your own key. The key reaches the apps as the secure property `secure.key`.
 - The poms carry the placeholder `ANYPOINT-ORG-ID` as group id. The deploy script builds from a temporary copy with your organization id, publishes the application to your Exchange, then deploys that asset to the shared space.
 - The runtime is 4.13.2 EDGE with Java 17 (the trial rejects 4.12). Each app uses 0.1 vCore, so all five fit in the 1 vCore of a trial Sandbox. If your shared space has another name or region, set `CLOUD_TARGET` in the settings file or pass `-Target`.
-- API Manager: both APIs are tracked through autodiscovery. Policies: the intake API has client-id enforcement and spike control; the system API has spike control. A call to the public intake API needs the `client_id` and `client_secret` headers of an application with a contract; `api-manager` creates one (`loan-portal-demo`) and stores its credentials in your settings file.
+- API Manager: three APIs are tracked through autodiscovery: the intake API, the system API and the document upload API (`POST /api/staging/{folder}/documents`). Policies: the intake API and the document upload API have client-id enforcement and spike control (20 and 10 requests per second); the system API has spike control. A call to a public API needs the `client_id` and `client_secret` headers of an application with a contract; `api-manager` creates one (`loan-portal-demo`, with a contract for both public APIs) and stores its credentials in your settings file. The document app starts only after its API has been tracked, so run `api-manager` and `config` before deploying it.
 - Alerts: in Runtime Manager > Alerts, create a "Deployment failed" alert for the five apps (the trial offers no other conditions).
 
 Check a deployment by hand:
@@ -173,6 +173,7 @@ Check a deployment by hand:
 ```powershell
 curl.exe https://<system-api-url>/api/health                                       # {"status":"UP","database":"UP"}
 curl.exe -i https://<intake-url>/api/applications/APP-1/status                     # 401 without credentials
+curl.exe -i -X POST "https://<document-url>/api/staging/abc123/documents?product=PL"   # 401 without credentials
 curl.exe -i -H "client_id: <id>" -H "client_secret: <secret>" https://<intake-url>/api/applications/APP-1/status    # 404 for an unknown application
 ```
 

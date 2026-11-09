@@ -50,3 +50,11 @@ Date: 2026-11-04. Author: Aritra. Source of truth: the problem-statement PDF; th
 - Document store: **MinIO/S3 locally + S3-compatible on cloud** (leaning), or SFTP. Decide in Phase 1 by spiking the Mule S3 connector against MinIO with a custom endpoint.
 - Appendix numbers (products, SC-1.0 scorecard, retry 2/4/8 s, 30-day offer): accepted as proposed; frozen in `db/seed.sql` in Phase 1.
 - Outbox pattern: each app writes to `outbox` via the system API; a scheduler publishes.
+
+## Decisions made during the build
+- **Document store: S3-compatible** (MinIO locally, Backblaze B2 on CloudHub). The S3 connector 8.0.10 works against a custom endpoint, so the SFTP fallback was not needed.
+- **The notification app publishes every outbox message.** The system API only writes outbox rows, so it never needs a broker connection and the publisher can run as a batch job with a lock.
+- **Rate limiting policy replaced by spike control**: version 1.5.x has no implementation for runtime 4.13.2.
+- **Teammate's Google Drive document app (Member 3): idea adopted, store not adopted.** It is a complete, tested implementation of the same contract. It was not made the store because Google sign-in must be repeated by hand after every start or redeploy, the token being kept only in memory, which breaks unattended cloud runs and clean-clone runs by other people. Its idea of checking every file before storing it was adopted as the upload gate of the document app, with credit in the code, the README, the design document and the commit.
+- **The document upload endpoint is behind API Manager** (client-id enforcement and spike control), like the intake API, because the app has a public address on CloudHub.
+
