@@ -25,7 +25,7 @@ function Deploy-One([string]$name) {
     $target = if ($Target) { $Target } elseif ($cfg['CLOUD_TARGET']) { $cfg['CLOUD_TARGET'] } else { 'Cloudhub-US-East-2' }
     $mvn = Join-Path $PSScriptRoot 'mvn.ps1'
     Write-Host "=== $name -> $target" -ForegroundColor Cyan
-    & $py[0] (Join-Path $PSScriptRoot 'setup-cloud.py') config --app $name --env $settingsFile
+    & $py (Join-Path $PSScriptRoot 'setup-cloud.py') config --app $name --env $settingsFile
     if ($LASTEXITCODE -ne 0) { throw 'Could not generate the cloud configuration.' }
     # Maven settings with the Exchange credentials (Connected App), written outside the repository
     $settings = Join-Path $env:USERPROFILE '.anypoint-m2-settings.xml'
@@ -55,9 +55,9 @@ if ($App -eq 'all') {
     foreach ($n in $order) {
         Deploy-One $n
         # the apps deployed next need the public address of the system API, and the notification emails need the intake address
-        if ($n -in 'loan-system-api', 'loan-intake-exp-api') { & $py[0] (Join-Path $PSScriptRoot 'setup-cloud.py') urls --env $settingsFile }
+        if ($n -in 'loan-system-api', 'loan-intake-exp-api') { & $py (Join-Path $PSScriptRoot 'setup-cloud.py') urls --env $settingsFile }
     }
-    & $py[0] (Join-Path $PSScriptRoot 'setup-cloud.py') urls --env $settingsFile
+    & $py (Join-Path $PSScriptRoot 'setup-cloud.py') urls --env $settingsFile
 }
 else {
     if ($order -notcontains $App) { throw "Unknown app $App. Use one of: $($order -join ', '), or all." }
