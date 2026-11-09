@@ -14,5 +14,6 @@ db:
   urlParams: ""
   maxPoolSize: "5"
   minPoolSize: "1"
+  maxWaitSeconds: "10"
 cache:
   productTtlSeconds: "60"

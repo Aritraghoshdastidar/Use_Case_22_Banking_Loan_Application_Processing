@@ -31,7 +31,8 @@
         <db:generic-connection url="jdbc:postgresql://${db.host}:${db.port}/${db.name}${db.urlParams}"
                                driverClassName="org.postgresql.Driver"
                                user="${db.user}" password="${secure::db.password}">
-            <db:pooling-profile maxPoolSize="${db.maxPoolSize}" minPoolSize="${db.minPoolSize}"/>
+            <!-- maxWait: a request that cannot get a connection within this time fails with a 503 instead of waiting for ever -->
+            <db:pooling-profile maxPoolSize="${db.maxPoolSize}" minPoolSize="${db.minPoolSize}" maxWait="${db.maxWaitSeconds}" maxWaitUnit="SECONDS"/>
         </db:generic-connection>
     </db:config>
 
