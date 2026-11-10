@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+	<sub-flow name="sf-load-application">
+		<http:request method="GET" doc:name="Get application" config-ref="System_API_Request_config" path="/applications/{applicationId}">
+			<http:uri-params><![CDATA[#[{applicationId: vars.envelope.applicationId}]]]></http:uri-params>
+		</http:request>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set app" variableName="app" />
+	</sub-flow>
+	<sub-flow name="sf-start-scoring">
+		<choice doc:name="Choice">
+			<when expression="#[vars.app.stage == 'VERIFIED']">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/start-scoring.dwl" />
+					</ee:message>
+				</ee:transform>
+				<http:request method="PUT" doc:name="Start scoring" config-ref="System_API_Request_config" path="/applications/{applicationId}/stage">
+					<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+					<http:response-validator>
+						<http:success-status-code-validator values="200,409" />
+					</http:response-validator>
+				</http:request>
+			</when>
+		</choice>
+	</sub-flow>
+	<!-- The product and the active scorecard change rarely, so they are cached for a short time -->
+	<sub-flow name="sf-load-reference">
+		<ee:cache doc:name="Cache" cachingStrategy-ref="Product_Cache_Strategy">
+			<http:request method="GET" doc:name="Get product" config-ref="System_API_Request_config" path="/products/{code}">
+				<http:uri-params><![CDATA[#[{code: vars.app.productCode}]]]></http:uri-params>
+			</http:request>
+		</ee:cache>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set product" variableName="product" />
+		<ee:cache doc:name="Cache" cachingStrategy-ref="Scorecard_Cache_Strategy">
+			<http:request method="GET" doc:name="Get scorecard" config-ref="System_API_Request_config" path="/scorecards/active" />
+		</ee:cache>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set scorecard" variableName="scorecard" />
+	</sub-flow>
+	<!-- No bureau record (404) and bureau switched off (503) are both "cannot be read": the decision
+	     becomes REFERRED with reason DATA_UNAVAILABLE. The identity number is never logged. -->
+	<sub-flow name="sf-read-bureau">
+		<http:request method="GET" doc:name="Get bureau report" config-ref="System_API_Request_config" path="/bureau/reports/{identityRef}">
+			<http:uri-params><![CDATA[#[{identityRef: vars.app.identityRef}]]]></http:uri-params>
+			<http:response-validator>
+				<http:success-status-code-validator values="200,404,503" />
+			</http:response-validator>
+		</http:request>
+		<set-variable value="#[output application/java --- if (attributes.statusCode == 200) payload else null]" doc:name="Set bureau" variableName="bureau" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.bureau == null]">
+				<logger level="WARN" doc:name="Logger" category="com.loan.scoring.score" message="#['bureau data unavailable applicationId=' ++ vars.app.applicationId]" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-decide">
+		<set-variable value="#[output application/java --- (now() >> 'UTC') as Date]" doc:name="Set today" variableName="today" />
+		<set-variable value="#[output application/java --- now() >> 'UTC']" doc:name="Set nowUtc" variableName="nowUtc" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/decide.dwl" />
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[output application/java --- {decision: payload.decision, decidingRule: payload.decidingRule}]" doc:name="Set outcome" variableName="outcome" />
+	</sub-flow>
+	<!-- One decision per application: saving it again returns the stored decision and changes nothing -->
+	<sub-flow name="sf-save-decision">
+		<http:request method="POST" doc:name="Save decision" config-ref="System_API_Request_config" path="/applications/{applicationId}/decision">
+			<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+		</http:request>
+		<logger level="INFO" doc:name="Logger" category="com.loan.scoring.score" message="#['decision saved applicationId=' ++ vars.app.applicationId ++ ' decision=' ++ vars.outcome.decision ++ ' decidedBy=' ++ vars.outcome.decidingRule]" />
+	</sub-flow>
+</mule>

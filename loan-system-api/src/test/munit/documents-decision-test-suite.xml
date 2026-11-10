@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="documents-decision-test-suite.xml" />
+	<munit:test name="documents-upsert-saves-inventory" description="Each document is written and the count is returned">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Check application exists" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{application_id: 'APP-2026-000001'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:insert">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Upsert document" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;documents&quot;:[{&quot;docType&quot;:&quot;PAYSLIP&quot;,&quot;fileName&quot;:&quot;p1.pdf&quot;,&quot;status&quot;:&quot;ACCEPTED&quot;,&quot;sizeBytes&quot;:224,&quot;sha256&quot;:&quot;abc&quot;,&quot;sourcePath&quot;:&quot;staging/x/p1.pdf&quot;,&quot;storedPath&quot;:&quot;verified/a/p1.pdf&quot;},{&quot;fileName&quot;:&quot;notes.txt&quot;,&quot;status&quot;:&quot;UNEXPECTED&quot;,&quot;sourcePath&quot;:&quot;staging/x/notes.txt&quot;}]}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="put:\applications\(applicationId)\documents:application\json:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000001')]" />
+			<munit-tools:assert-that expression="#[payload.documents]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:verify-call processor="db:insert" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Upsert document" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="documents-upsert-unknown-application-is-not-found" description="Unknown application is a 404 and nothing is written" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Check application exists" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;documents&quot;:[]}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="put:\applications\(applicationId)\documents:application\json:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="decision-first-save-creates-decision-and-hits" description="A new decision is created with each rule hit written">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Insert decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{inserted: 1, found: 1, current_stage: 'SCORING', decision_count: 0}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:insert">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Insert rule hit" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;decision&quot;:&quot;APPROVED&quot;,&quot;score&quot;:81.5,&quot;scorecardVersion&quot;:&quot;SC-1.0&quot;,&quot;reasonCodes&quot;:[&quot;BAND_APPROVE&quot;],&quot;requestedAmount&quot;:200000,&quot;approvedAmount&quot;:180000,&quot;approvedTenure&quot;:24,&quot;approvedRatePct&quot;:12,&quot;instalment&quot;:8472.5,&quot;correlationId&quot;:&quot;22222222-2222-4222-8222-222222222222&quot;,&quot;sourceApp&quot;:&quot;loan-scoring-proc&quot;,&quot;ruleHits&quot;:[{&quot;ruleCode&quot;:&quot;BUREAU_SCORE&quot;,&quot;ruleType&quot;:&quot;FACTOR&quot;,&quot;inputValue&quot;:780,&quot;weight&quot;:35,&quot;points&quot;:100,&quot;contribution&quot;:35},{&quot;ruleCode&quot;:&quot;HP-02&quot;,&quot;ruleType&quot;:&quot;HARD_RULE&quot;,&quot;triggered&quot;:false}]}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications\(applicationId)\decision:application\json:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('201')]" />
+			<munit-tools:assert-that expression="#[payload.created]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:verify-call processor="db:insert" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Insert rule hit" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="decision-repeat-changes-nothing" description="A decision that already exists returns 200 and writes no rule hits">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Insert decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{inserted: 0, found: 1, current_stage: 'APPROVED', decision_count: 1}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;decision&quot;:&quot;APPROVED&quot;,&quot;scorecardVersion&quot;:&quot;SC-1.0&quot;,&quot;requestedAmount&quot;:200000,&quot;correlationId&quot;:&quot;22222222-2222-4222-8222-222222222222&quot;,&quot;sourceApp&quot;:&quot;loan-scoring-proc&quot;,&quot;ruleHits&quot;:[{&quot;ruleCode&quot;:&quot;BUREAU_SCORE&quot;,&quot;ruleType&quot;:&quot;FACTOR&quot;}]}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications\(applicationId)\decision:application\json:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.created]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('200')]" />
+			<munit-tools:verify-call processor="db:insert" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Insert rule hit" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="decision-unknown-application-is-not-found" description="Unknown application is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Insert decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{inserted: 0, found: 0, current_stage: null, decision_count: 0}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;decision&quot;:&quot;APPROVED&quot;,&quot;scorecardVersion&quot;:&quot;SC-1.0&quot;,&quot;requestedAmount&quot;:1,&quot;correlationId&quot;:&quot;22222222-2222-4222-8222-222222222222&quot;,&quot;sourceApp&quot;:&quot;x&quot;,&quot;ruleHits&quot;:[]}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications\(applicationId)\decision:application\json:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="decision-wrong-stage-conflicts" description="An application that is not in SCORING cannot be decided" expectedErrorType="APP:CONFLICT">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Insert decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{inserted: 0, found: 1, current_stage: 'VERIFIED', decision_count: 0}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;decision&quot;:&quot;APPROVED&quot;,&quot;scorecardVersion&quot;:&quot;SC-1.0&quot;,&quot;requestedAmount&quot;:1,&quot;correlationId&quot;:&quot;22222222-2222-4222-8222-222222222222&quot;,&quot;sourceApp&quot;:&quot;x&quot;,&quot;ruleHits&quot;:[]}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications\(applicationId)\decision:application\json:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+</mule>

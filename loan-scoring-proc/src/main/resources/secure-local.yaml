@@ -1,0 +1,4 @@
+# Secrets for the LOCAL environment, encrypted with the Mule Secure Properties tool (AES / CBC).
+# The key is passed at run time (-M-Dsecure.key=...) and is not stored in this file.
+amqp:
+  password: "![pjnVtbPGIzM1VsYqnbL7Fg==]"

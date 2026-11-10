@@ -1,0 +1,96 @@
+#%RAML 1.0
+title: Loan Document Upload API
+version: v1
+description: |
+  Upload gate of the document app. The applicant (or a portal acting for them) uploads the supporting documents
+  BEFORE submitting the application. Every file is checked before anything is stored: if any file fails, the answer
+  is 422 with a reason per file and nothing is stored. When all files pass they are stored under
+  staging/{folder}/ and the application is submitted with that folder name in its document manifest.
+  Verification of the stored documents is not part of this API: it runs from the queue after submission.
+baseUri: http://localhost:8703/api
+mediaType: application/json
+protocols: [HTTP, HTTPS]
+
+types:
+  FileResult:
+    properties:
+      field: string
+      file: string
+      docType?: string
+      status:
+        enum: [STAGED, OK, REJECTED]
+      reasonCode?:
+        enum: [UNSUPPORTED_TYPE, EMPTY_OR_UNREADABLE, FILE_TOO_LARGE, DUPLICATE_CONTENT]
+      message?: string
+  Staged:
+    properties:
+      code:
+        enum: [FILES_STAGED]
+      message: string
+      details:
+        properties:
+          folder: string
+          files: FileResult[]
+      correlationId: string
+  Rejected:
+    properties:
+      code:
+        enum: [DOCUMENT_VALIDATION_FAILED]
+      message: string
+      details:
+        properties:
+          folder: string
+          rejected: integer
+          files: FileResult[]
+      correlationId: string
+  Error:
+    properties:
+      code:
+        enum: [INVALID_FOLDER, INVALID_PRODUCT, UNKNOWN_PRODUCT, NO_FILES, TOO_MANY_FILES, SERVICE_UNAVAILABLE, INTERNAL_ERROR]
+      message: string
+      correlationId: string
+
+/staging/{folder}/documents:
+  uriParameters:
+    folder:
+      description: Folder name the application will later declare in its manifest. 3 to 64 letters, digits, underscore or hyphen.
+      type: string
+      pattern: ^[A-Za-z0-9_-]{3,64}$
+  post:
+    description: |
+      Check and store the documents of one applicant. One multipart part per file. File names may contain letters,
+      digits, dot, underscore and hyphen, and must start with a document type of the product (for example
+      id_proof.pdf, address_proof.pdf, payslip_1.pdf). A name already in the folder is replaced.
+    queryParameters:
+      product:
+        description: Product code whose checklist applies.
+        type: string
+        pattern: ^[A-Z_]{2,30}$
+        example: PL
+    body:
+      multipart/form-data:
+    responses:
+      201:
+        description: Every file passed and was stored.
+        body:
+          application/json:
+            type: Staged
+      400:
+        description: Bad folder name, missing or unknown product, or no files in the request.
+        body:
+          application/json:
+            type: Error
+      401:
+        description: Missing or wrong client credentials (client_id and client_secret headers).
+      422:
+        description: At least one file failed (nothing stored), or the folder would hold too many files.
+        body:
+          application/json:
+            type: [Rejected, Error]
+      429:
+        description: Too many requests (spike control).
+      503:
+        description: The system API or the object store is not reachable.
+        body:
+          application/json:
+            type: Error

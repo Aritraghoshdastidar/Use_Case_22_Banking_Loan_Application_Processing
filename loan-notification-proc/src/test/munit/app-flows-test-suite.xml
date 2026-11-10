@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="app-flows-test-suite.xml" />
+	<munit:test name="health-endpoint-reports-up" description="The health flow answers UP with the app name">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="health-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('UP')]" />
+			<munit-tools:assert-that expression="#[payload.app]" is="#[MunitTools::equalTo('loan-notification-proc')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="consumer-flow-hands-each-message-to-the-pattern" description="The listener flow keeps the delivery tag and raw body, names the queue and expected type, then runs the shared pattern">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-consume-message" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;messageId&quot;:&quot;44444444-4444-4444-8444-444444444444&quot;}']" mediaType="application/java" />
+				<munit:attributes value="#[{ackId: 7}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="decision-consumer-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-consume-message" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.ackId]" is="#[MunitTools::equalTo(7)]" />
+			<munit-tools:assert-that expression="#[vars.sourceQueue]" is="#[MunitTools::equalTo('loan.decision.q')]" />
+			<munit-tools:assert-that expression="#[vars.expectedType]" is="#[MunitTools::equalTo('DECISION_READY')]" />
+			<munit-tools:assert-that expression="#[vars.consumerName]" is="#[MunitTools::equalTo('notification-proc')]" />
+			<munit-tools:assert-that expression="#[vars.rawBody]" is="#[MunitTools::equalTo('{&quot;messageId&quot;:&quot;44444444-4444-4444-8444-444444444444&quot;}')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-claim-release-is-logged-not-fatal" description="If the claim cannot be released the dead-letter step still goes on; an operator is told how to release it by hand">
+		<munit:behavior>
+			<set-variable value="true" variableName="claimed" />
+			<set-variable value="notification-proc" variableName="consumerName" />
+			<set-variable value="44444444-4444-4444-8444-444444444444" variableName="messageId" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-release-claim" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="claim-that-was-never-taken-is-not-released" description="No claim, nothing to release">
+		<munit:behavior>
+			<set-variable value="false" variableName="claimed" />
+			<set-variable value="notification-proc" variableName="consumerName" />
+			<set-variable value="44444444-4444-4444-8444-444444444444" variableName="messageId" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-release-claim" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="sweeper-starts-the-batch-for-pending-rows" description="Pending rows start the batch job once and the sweep lock is taken">
+		<munit:behavior>
+			<try><os:remove key="sweepRunning" objectStore="Sweep_Lock_Store" /><error-handler><on-error-continue type="OS:KEY_NOT_FOUND" /></error-handler></try>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get pending outbox" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{messageId: '11111111-1111-4111-8111-111111111111', queue: 'loan.verify.q', payload: {}}, {messageId: '22222222-2222-4222-8222-222222222222', queue: 'loan.score.q', payload: {}}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="outbox-sweep-batch-flow" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="outbox-sweeper-flow" />
+			<os:contains key="sweepRunning" objectStore="Sweep_Lock_Store" target="locked" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="outbox-sweep-batch-flow" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.locked]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="sweeper-does-nothing-when-the-outbox-is-empty" description="No pending rows: no batch job and no lock">
+		<munit:behavior>
+			<try><os:remove key="sweepRunning" objectStore="Sweep_Lock_Store" /><error-handler><on-error-continue type="OS:KEY_NOT_FOUND" /></error-handler></try>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get pending outbox" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="outbox-sweep-batch-flow" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="outbox-sweeper-flow" />
+			<os:contains key="sweepRunning" objectStore="Sweep_Lock_Store" target="locked" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="outbox-sweep-batch-flow" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.locked]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="sweeper-skips-while-the-previous-sweep-is-still-running" description="With the lock taken the outbox is not even read, so rows are not published twice">
+		<munit:behavior>
+			<try><os:remove key="sweepRunning" objectStore="Sweep_Lock_Store" /><error-handler><on-error-continue type="OS:KEY_NOT_FOUND" /></error-handler></try>
+			<os:store key="sweepRunning" objectStore="Sweep_Lock_Store"><os:value>#[true]</os:value></os:store>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get pending outbox" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{messageId: '11111111-1111-4111-8111-111111111111', queue: 'loan.verify.q', payload: {}}, {messageId: '22222222-2222-4222-8222-222222222222', queue: 'loan.score.q', payload: {}}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="outbox-sweep-batch-flow" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="outbox-sweeper-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get pending outbox" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="outbox-sweep-batch-flow" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="batch-job-publishes-every-record-and-releases-the-lock" description="Each row is one record sent through the publish step, and when the job completes the lock is released">
+		<munit:behavior>
+			<try><os:remove key="sweepRunning" objectStore="Sweep_Lock_Store" /><error-handler><on-error-continue type="OS:KEY_NOT_FOUND" /></error-handler></try>
+			<os:store key="sweepRunning" objectStore="Sweep_Lock_Store"><os:value>#[true]</os:value></os:store>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-publish-outbox-row" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[[{messageId: '11111111-1111-4111-8111-111111111111', queue: 'loan.verify.q', payload: {}}, {messageId: '22222222-2222-4222-8222-222222222222', queue: 'loan.score.q', payload: {}}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="outbox-sweep-batch-flow" />
+			<munit-tools:sleep time="4000" />
+			<os:contains key="sweepRunning" objectStore="Sweep_Lock_Store" target="locked" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-publish-outbox-row" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.locked]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="finishing-a-sweep-works-even-if-the-lock-expired" description="The lock may have expired on its own; finishing must not fail">
+		<munit:behavior>
+			<try><os:remove key="sweepRunning" objectStore="Sweep_Lock_Store" /><error-handler><on-error-continue type="OS:KEY_NOT_FOUND" /></error-handler></try>
+			<munit:set-event>
+				<munit:payload value="#[{totalRecords: 2, successfulRecords: 2, failedRecords: 0}]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-finish-sweep" />
+			<os:contains key="sweepRunning" objectStore="Sweep_Lock_Store" target="locked" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.locked]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+</mule>

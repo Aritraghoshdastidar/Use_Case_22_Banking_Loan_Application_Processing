@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="validation-results-test-suite.xml" />
+	<munit:test name="all-valid-files-complete-the-checklist" description="Every required document accepted: nothing missing">
+		<munit:behavior>
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" variableName="rules" />
+			<set-variable value="#[[]]" variableName="reused" />
+			<set-variable value="#[[{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a1'}, {key: 'staging/f/p1.pdf', fileName: 'p1.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a2'}, {key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a3'}]]" variableName="fresh" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/collect-validation.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.complete]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.accepted)]" is="#[MunitTools::equalTo(3)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.missingTypes)]" is="#[MunitTools::equalTo(0)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="same-content-twice-is-counted-once" description="Two payslips with the same digest: the second is a duplicate and one payslip is missing (N16)">
+		<munit:behavior>
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" variableName="rules" />
+			<set-variable value="#[[]]" variableName="reused" />
+			<set-variable value="#[[{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a1'}, {key: 'staging/f/p1.pdf', fileName: 'p1.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'dup'}, {key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'dup'}]]" variableName="fresh" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/collect-validation.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.duplicates)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.duplicates[0].fileName]" is="#[MunitTools::equalTo('p2.pdf')]" />
+			<munit-tools:assert-that expression="#[payload.duplicates[0].reason]" is="#[MunitTools::equalTo('DUPLICATE_CONTENT')]" />
+			<munit-tools:assert-that expression="#[payload.missingTypes[0].docType]" is="#[MunitTools::equalTo('PAYSLIP')]" />
+			<munit-tools:assert-that expression="#[payload.missingTypes[0].found]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.complete]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="quarantined-file-does-not-count-as-found" description="A rejected payslip leaves one found of two required">
+		<munit:behavior>
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" variableName="rules" />
+			<set-variable value="#[[]]" variableName="reused" />
+			<set-variable value="#[[{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a1'}, {key: 'staging/f/p1.pdf', fileName: 'p1.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a2'}, {key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'QUARANTINED', reason: 'FILE_TOO_LARGE', sha256: null}]]" variableName="fresh" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/collect-validation.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.quarantined)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.quarantined[0].reason]" is="#[MunitTools::equalTo('FILE_TOO_LARGE')]" />
+			<munit-tools:assert-that expression="#[payload.missingTypes[0].required]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.missingTypes[0].found]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.complete]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="earlier-accepted-files-are-merged-with-new-ones" description="Resubmission: accepted files from the first round plus the newly supplied one complete the set (N15)">
+		<munit:behavior>
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" variableName="rules" />
+			<set-variable value="#[[{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a1'}, {key: 'staging/f/p1.pdf', fileName: 'p1.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a2'}]]" variableName="reused" />
+			<set-variable value="#[[{key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a3'}]]" variableName="fresh" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/collect-validation.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.complete]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.results)]" is="#[MunitTools::equalTo(3)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="nothing-to-validate-still-evaluates-the-checklist" description="Only reused files: the checklist is still evaluated">
+		<munit:behavior>
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" variableName="rules" />
+			<set-variable value="#[[{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a1'}]]" variableName="reused" />
+			<set-variable value="#[[]]" variableName="fresh" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/collect-validation.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.complete]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.missingTypes)]" is="#[MunitTools::equalTo(1)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="previously-accepted-file-is-reused-not-checked-again" description="A file accepted in an earlier round with the same size and path is not validated again (N15)">
+		<munit:behavior>
+			<set-variable value="#[{documents: [{status: 'ACCEPTED', sha256: 'a1', sourcePath: 'staging/f/id.pdf', sizeBytes: 100}, {status: 'QUARANTINED', sha256: null, sourcePath: 'staging/f/p2.pdf', sizeBytes: 3000}]}]" variableName="app" />
+			<set-variable value="#[{present: [{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100}, {key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 150}]}]" variableName="reconciliation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/split-present.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.reused)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.reused[0].sha256]" is="#[MunitTools::equalTo('a1')]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.toValidate)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.toValidate[0].fileName]" is="#[MunitTools::equalTo('p2.pdf')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="replaced-file-with-a-different-size-is-checked-again" description="The same path with a different size is a new upload and must be validated">
+		<munit:behavior>
+			<set-variable value="#[{documents: [{status: 'ACCEPTED', sha256: 'a1', sourcePath: 'staging/f/id.pdf', sizeBytes: 999}]}]" variableName="app" />
+			<set-variable value="#[{present: [{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100}, {key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 150}]}]" variableName="reconciliation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/split-present.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.reused)]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.toValidate)]" is="#[MunitTools::equalTo(2)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="first-round-has-nothing-to-reuse" description="No inventory yet: everything present is validated">
+		<munit:behavior>
+			<set-variable value="#[{documents: []}]" variableName="app" />
+			<set-variable value="#[{present: [{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100}, {key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 150}]}]" variableName="reconciliation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/split-present.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.reused)]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.toValidate)]" is="#[MunitTools::equalTo(2)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="inventory-leaves-out-fields-with-no-value" description="The system API rejects nulls, so a field without a value is not sent">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<set-variable value="#[{results: [{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a1'}, {key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'QUARANTINED', reason: 'FILE_TOO_LARGE', sha256: null}]}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/inventory-body.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[(payload.documents[0] pluck $$) contains &quot;reason&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].sha256]" is="#[MunitTools::equalTo('a1')]" />
+			<munit-tools:assert-that expression="#[(payload.documents[1] pluck $$) contains &quot;sha256&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[payload.documents[1].reason]" is="#[MunitTools::equalTo('FILE_TOO_LARGE')]" />
+			<munit-tools:assert-that expression="#[payload.documents[1].storedPath]" is="#[MunitTools::equalTo('quarantine/APP-2026-000001/p2.pdf')]" />
+			<munit-tools:assert-that expression="#[(payload.documents[0] pluck $$) contains &quot;storedPath&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="quarantined-file-is-copied-saved-then-removed" description="Copy to quarantine, save the inventory, only then remove the staging copy">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<set-variable value="#[{results: [{key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'QUARANTINED', reason: 'FILE_TOO_LARGE', sha256: null}], quarantined: [{key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'QUARANTINED', reason: 'FILE_TOO_LARGE', sha256: null}]}]" variableName="validation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to quarantine" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-store-results" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:copy-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to quarantine" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save inventory" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:delete-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="good-files-are-not-moved" description="With nothing quarantined only the inventory is saved and nothing is copied or deleted">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<set-variable value="#[{results: [{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100, status: 'ACCEPTED', reason: null, sha256: 'a1'}], quarantined: []}]" variableName="validation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to quarantine" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-store-results" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:copy-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to quarantine" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save inventory" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:delete-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-inventory-save-keeps-the-staging-copy" description="If the inventory cannot be saved the staging file is not deleted, so the whole step can run again">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<set-variable value="#[{results: [{key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'QUARANTINED', reason: 'FILE_TOO_LARGE', sha256: null}], quarantined: [{key: 'staging/f/p2.pdf', fileName: 'p2.pdf', docType: 'PAYSLIP', size: 100, status: 'QUARANTINED', reason: 'FILE_TOO_LARGE', sha256: null}]}]" variableName="validation" />
+			<munit-tools:mock-when processor="s3:copy-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Copy to quarantine" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:delete-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save inventory" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-store-results" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('CONNECTIVITY')]" />
+			<munit-tools:verify-call processor="s3:delete-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Remove from staging" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="nothing-to-validate-skips-the-parallel-step" description="When every file was accepted before, no file is checked again">
+		<munit:behavior>
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001', documents: [{status: 'ACCEPTED', sha256: 'a1', sourcePath: 'staging/f/id.pdf', sizeBytes: 100}]}]" variableName="app" />
+			<set-variable value="#[{present: [{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100}]}]" variableName="reconciliation" />
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-files" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(vars.validation.accepted)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="each-new-file-is-validated-once" description="Two new files give two validations whose results are collected">
+		<munit:behavior>
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001', documents: []}]" variableName="app" />
+			<set-variable value="#[{present: [{key: 'staging/f/id.pdf', fileName: 'id.pdf', docType: 'ID_PROOF', size: 100}, {key: 'staging/f/p1.pdf', fileName: 'p1.pdf', docType: 'PAYSLIP', size: 100}]}]" variableName="reconciliation" />
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{key: 'staging/f/x.pdf', fileName: 'x.pdf', docType: 'PAYSLIP', size: 100, status: 'ACCEPTED', reason: null, sha256: 'zz'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-files" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+</mule>

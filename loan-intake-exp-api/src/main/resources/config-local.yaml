@@ -1,0 +1,15 @@
+app:
+  name: "loan-intake-exp-api"
+http:
+  listener:
+    host: "0.0.0.0"
+    port: "8702"
+    basePath: "/api/*"
+  publicBaseUrl: "http://localhost:8702/api"
+system:
+  api:
+    host: "localhost"
+    port: "8701"
+    protocol: "HTTP"
+    basePath: "/api"
+    timeoutMillis: "10000"

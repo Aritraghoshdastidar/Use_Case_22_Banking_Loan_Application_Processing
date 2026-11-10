@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd">
+	<!-- The consumer pattern every queue consumer in this solution follows.
+	     A consumer flow sets these variables and calls sf-consume-message:
+	       ackId, rawBody, consumerName, sourceQueue, expectedType
+	     Another app copies this file and changes the handler flow-ref in fl-attempt
+	     Outcomes (vars.outcome): DONE, DUPLICATE, POISON, PERMANENT, EXHAUSTED
+	       DONE / DUPLICATE        -> ack
+	       POISON / PERMANENT /
+	       EXHAUSTED               -> release the dedupe claim, publish to <queue>.dlq, then ack
+	       dead-letter publish fails -> reject with requeue, so a message is never lost -->
+	<sub-flow name="sf-consume-message">
+		<flow-ref doc:name="sf-open-envelope" name="sf-open-envelope" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.outcome != 'POISON']">
+				<set-variable value="1" doc:name="Set attempt" variableName="attempt" />
+				<set-variable value="false" doc:name="Set claimed" variableName="claimed" />
+				<flow-ref doc:name="fl-attempt" name="fl-attempt" />
+			</when>
+		</choice>
+		<flow-ref doc:name="sf-settle-message" name="sf-settle-message" />
+	</sub-flow>
+	<sub-flow name="sf-open-envelope">
+		<set-variable value="OPEN" doc:name="Set outcome" variableName="outcome" />
+		<set-variable value="#[null]" doc:name="Set messageId" variableName="messageId" />
+		<try doc:name="Try">
+			<set-variable value="#[output application/java --- read(vars.rawBody, 'application/json')]" doc:name="Set envelope" variableName="envelope" />
+			<set-variable value="#[(vars.envelope is Object) and ((vars.envelope.messageId default '') matches /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/) and (vars.envelope.applicationId default '') != '' and (vars.envelope.'type' default '') == vars.expectedType]" doc:name="Set envelopeValid" variableName="envelopeValid" />
+			<error-handler>
+				<on-error-continue enableNotifications="false" logException="false" doc:name="On Error Continue">
+					<set-variable value="false" doc:name="Set envelopeValid" variableName="envelopeValid" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice">
+			<when expression="#[vars.envelopeValid == true]">
+				<set-variable value="#[vars.envelope.messageId]" doc:name="Set messageId" variableName="messageId" />
+			</when>
+			<otherwise>
+				<set-variable value="POISON" doc:name="Set outcome" variableName="outcome" />
+				<set-variable value="Message is not a valid envelope" doc:name="Set failReason" variableName="failReason" />
+				<logger level="ERROR" doc:name="Logger" category="com.loan.notification.consumer" message="#['poison message on ' ++ vars.sourceQueue ++ ': not a valid ' ++ vars.expectedType ++ ' envelope']" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<!-- One processing attempt. It calls itself again after a wait when the failure is temporary:
+	     waits are retry.baseMillis x 1, 2, 4 (2 s, 4 s, 8 s with the default) -->
+	<flow name="fl-attempt">
+		<set-variable value="ATTEMPT" doc:name="Set outcome" variableName="outcome" />
+		<try doc:name="Try">
+			<choice doc:name="Choice">
+				<when expression="#[vars.claimed == 'false']">
+					<flow-ref doc:name="sf-claim-message" name="sf-claim-message" />
+				</when>
+			</choice>
+			<choice doc:name="Choice">
+				<when expression="#[vars.outcome == 'ATTEMPT']">
+					<flow-ref doc:name="sf-handle-decision" name="sf-handle-decision" />
+					<set-variable value="DONE" doc:name="Set outcome" variableName="outcome" />
+				</when>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="false" logException="false" doc:name="Permanent failure" type="HTTP:BAD_REQUEST, HTTP:NOT_FOUND">
+					<set-variable value="PERMANENT" doc:name="Set outcome" variableName="outcome" />
+					<set-variable value="#[error.description default 'Permanent failure']" doc:name="Set failReason" variableName="failReason" />
+					<logger level="ERROR" doc:name="Logger" category="com.loan.notification.consumer" message="#['permanent failure messageId=' ++ vars.messageId ++ ' reason=' ++ vars.failReason]" />
+				</on-error-continue>
+				<on-error-continue enableNotifications="false" logException="false" doc:name="Temporary failure">
+					<set-variable value="TRANSIENT" doc:name="Set outcome" variableName="outcome" />
+					<set-variable value="#[error.description default 'Temporary failure']" doc:name="Set failReason" variableName="failReason" />
+					<logger level="WARN" doc:name="Logger" category="com.loan.notification.consumer" message="#['attempt ' ++ (vars.attempt as String) ++ ' failed messageId=' ++ vars.messageId ++ ' reason=' ++ vars.failReason]" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<choice doc:name="Choice">
+			<when expression="#[vars.outcome == 'TRANSIENT' and (vars.attempt as Number) &lt;= (p('retry.maxRetries') as Number)]">
+				<set-variable value="#[(p('retry.baseMillis') as Number) * ([1, 2, 4, 8, 16][(vars.attempt as Number) - 1])]" doc:name="Set delayMillis" variableName="delayMillis" />
+				<logger level="INFO" doc:name="Logger" category="com.loan.notification.consumer" message="#['retrying messageId=' ++ vars.messageId ++ ' in ' ++ (vars.delayMillis as String) ++ ' ms']" />
+				<set-variable value="#[java!java::lang::Thread::sleep(vars.delayMillis as Number {class: 'long'})]" doc:name="Wait" variableName="waited" />
+				<set-variable value="#[(vars.attempt as Number) + 1]" doc:name="Set attempt" variableName="attempt" />
+				<flow-ref doc:name="fl-attempt" name="fl-attempt" />
+			</when>
+			<when expression="#[vars.outcome == 'TRANSIENT']">
+				<set-variable value="EXHAUSTED" doc:name="Set outcome" variableName="outcome" />
+			</when>
+		</choice>
+	</flow>
+	<!-- Dedupe: the first delivery claims the message id for this consumer, a repeat gets 409 -->
+	<sub-flow name="sf-claim-message">
+		<http:request method="POST" doc:name="Claim message" config-ref="System_API_Request_config" path="/processed-messages">
+			<http:body><![CDATA[#[output application/json --- {consumer: vars.consumerName, messageId: vars.messageId}]]]></http:body>
+			<http:response-validator>
+				<http:success-status-code-validator values="201,409" />
+			</http:response-validator>
+		</http:request>
+		<choice doc:name="Choice">
+			<when expression="#[attributes.statusCode == 409]">
+				<set-variable value="DUPLICATE" doc:name="Set outcome" variableName="outcome" />
+				<logger level="INFO" doc:name="Logger" category="com.loan.notification.consumer" message="#['duplicate delivery messageId=' ++ vars.messageId ++ ' ignored']" />
+			</when>
+			<otherwise>
+				<set-variable value="true" doc:name="Set claimed" variableName="claimed" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-settle-message">
+		<try doc:name="Try">
+			<choice doc:name="Choice">
+				<when expression="#[vars.outcome == 'DONE' or vars.outcome == 'DUPLICATE']">
+					<amqp:ack doc:name="Ack" ackId="#[vars.ackId]" />
+				</when>
+				<otherwise>
+					<flow-ref doc:name="sf-release-claim" name="sf-release-claim" />
+					<flow-ref doc:name="sf-dead-letter" name="sf-dead-letter" />
+					<amqp:ack doc:name="Ack" ackId="#[vars.ackId]" />
+				</otherwise>
+			</choice>
+			<error-handler>
+				<on-error-continue enableNotifications="false" logException="false" doc:name="On Error Continue">
+					<logger level="ERROR" doc:name="Logger" category="com.loan.notification.consumer" message="#['could not settle messageId=' ++ (vars.messageId default 'unknown') ++ ' outcome=' ++ vars.outcome ++ ', returning it to the queue. error=' ++ (error.description default '')]" />
+					<amqp:reject doc:name="Reject" ackId="#[vars.ackId]" requeue="true" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<!-- A message that goes to the dead-letter queue is released, so it can be replayed later -->
+	<sub-flow name="sf-release-claim">
+		<choice doc:name="Choice">
+			<when expression="#[vars.claimed == 'true']">
+				<try doc:name="Try">
+					<http:request method="DELETE" doc:name="Release claim" config-ref="System_API_Request_config" path="/processed-messages/{consumer}/{messageId}">
+						<http:uri-params><![CDATA[#[{consumer: vars.consumerName, messageId: vars.messageId}]]]></http:uri-params>
+					</http:request>
+					<error-handler>
+						<on-error-continue enableNotifications="false" logException="false" doc:name="On Error Continue">
+							<logger level="ERROR" doc:name="Logger" category="com.loan.notification.consumer" message="#['claim for messageId=' ++ vars.messageId ++ ' was not released, a replay needs DELETE /processed-messages/' ++ vars.consumerName ++ '/' ++ vars.messageId]" />
+						</on-error-continue>
+					</error-handler>
+				</try>
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-dead-letter">
+		<amqp:publish doc:name="Publish to dead-letter queue" config-ref="AMQP_Config" exchangeName="${amqp.exchange}" deliveryMode="PERSISTENT" requestBrokerConfirms="true" mandatory="true">
+			<amqp:routing-keys>
+				<amqp:routing-key value="#[vars.sourceQueue ++ '.dlq']" />
+			</amqp:routing-keys>
+			<amqp:message>
+				<amqp:body><![CDATA[#[vars.rawBody]]]></amqp:body>
+				<amqp:properties contentType="application/json" messageId="#[vars.messageId]" />
+				<amqp:headers><![CDATA[#[{
+	"x-source-queue": vars.sourceQueue,
+	"x-consumer": vars.consumerName,
+	"x-failure": vars.outcome,
+	"x-reason": if (sizeOf(vars.failReason default '') > 200) (vars.failReason[0 to 199]) else (vars.failReason default ''),
+	"x-attempts": vars.attempt default 0
+}]]]></amqp:headers>
+			</amqp:message>
+		</amqp:publish>
+		<logger level="ERROR" doc:name="Logger" category="com.loan.notification.consumer" message="#['dead-lettered messageId=' ++ (vars.messageId default 'unknown') ++ ' queue=' ++ vars.sourceQueue ++ '.dlq outcome=' ++ vars.outcome]" />
+	</sub-flow>
+</mule>

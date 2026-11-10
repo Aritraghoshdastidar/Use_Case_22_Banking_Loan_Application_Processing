@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="get:\products\(code):loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.code]" doc:name="Set code" variableName="code" />
+		<db:select doc:name="Get product" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT code, name, min_amount, max_amount, min_tenure_months, max_tenure_months, annual_rate_pct,
+       min_age_at_application, max_age_at_application, max_age_at_maturity, emi_ceiling_pct, amount_step, active
+FROM products
+WHERE code = :code]]></db:sql>
+			<db:input-parameters><![CDATA[#[{code: vars.code}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(payload)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Product not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var p = payload[0]
+---
+{
+	code: p.code,
+	name: p.name,
+	minAmount: p.min_amount,
+	maxAmount: p.max_amount,
+	minTenureMonths: p.min_tenure_months,
+	maxTenureMonths: p.max_tenure_months,
+	annualRatePct: p.annual_rate_pct,
+	minAgeAtApplication: p.min_age_at_application,
+	maxAgeAtApplication: p.max_age_at_application,
+	maxAgeAtMaturity: p.max_age_at_maturity,
+	emiCeilingPct: p.emi_ceiling_pct,
+	amountStep: p.amount_step,
+	active: p.active
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="get:\products\(code)\document-rules:loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.code]" doc:name="Set code" variableName="code" />
+		<db:select doc:name="Check product" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT code
+FROM products
+WHERE code = :code]]></db:sql>
+			<db:input-parameters><![CDATA[#[{code: vars.code}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(payload)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Product not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<db:select doc:name="Get document rules" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT doc_type, description, required_count, max_size_bytes,
+       array_to_string(allowed_extensions, ',') AS allowed_extensions,
+       array_to_string(allowed_mime_types, ',') AS allowed_mime_types
+FROM product_document_rules
+WHERE product_code = :code
+ORDER BY id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{code: vars.code}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	productCode: vars.code,
+	rules: payload map (rule) -> {
+		docType: rule.doc_type,
+		description: rule.description,
+		requiredCount: rule.required_count,
+		maxSizeBytes: rule.max_size_bytes,
+		allowedExtensions: rule.allowed_extensions splitBy ",",
+		allowedMimeTypes: rule.allowed_mime_types splitBy ","
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="get:\scorecards\active:loan-system-api-config">
+		<db:select doc:name="Get active scorecard" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT version, approve_min_score, refer_min_score, offer_validity_days
+FROM scorecard_versions
+WHERE active = TRUE
+LIMIT 1]]></db:sql>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set scorecard" variableName="scorecard" />
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(vars.scorecard)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="No active scorecard" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<db:select doc:name="Get scorecard factors" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT factor, weight, zero_points_at, full_points_at
+FROM scorecard_config
+WHERE version = :version
+ORDER BY factor]]></db:sql>
+			<db:input-parameters><![CDATA[#[{version: vars.scorecard[0].version}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var s = vars.scorecard[0]
+---
+{
+	version: s.version,
+	approveMinScore: s.approve_min_score,
+	referMinScore: s.refer_min_score,
+	offerValidityDays: s.offer_validity_days,
+	factors: payload map (f) -> {
+		factor: f.factor,
+		weight: f.weight,
+		zeroPointsAt: f.zero_points_at,
+		fullPointsAt: f.full_points_at
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="upload-test-suite.xml" />
+	<munit:test name="upload-stores-every-file-when-all-pass" description="Good PDF, JPEG and PNG files are all stored under staging/&lt;folder&gt;/ and the answer is 201">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'id_proof.jpg'}, 'Content-Type': 'image/jpeg'}, content: dw::core::Binaries::fromBase64('/9j/4GpwZWdkYXRh/9k=')}, p1: {headers: {'Content-Disposition': {name: 'p1', filename: 'address_proof.png'}, 'Content-Type': 'image/png'}, content: dw::core::Binaries::fromBase64('iVBORw0KGgpkYXRhAAAAAElFTkSuQmCC')}, p2: {headers: {'Content-Disposition': {name: 'p2', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			<set-variable variableName="rules" value="#[output application/java --- {rules: [{docType: 'ID_PROOF', requiredCount: 1, maxSizeBytes: 100, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'ADDRESS_PROOF', requiredCount: 1, maxSizeBytes: 1000, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'PAYSLIP', requiredCount: 2, maxSizeBytes: 1000, allowedExtensions: ['pdf','png'], allowedMimeTypes: ['application/pdf','image/png']}]}]" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="3" />
+			<munit-tools:verify-call processor="s3:list-objects" times="1" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(201)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('FILES_STAGED')]" />
+			<munit-tools:assert-that expression="#[payload.details.files map $.status joinBy ',']" is="#[MunitTools::equalTo('STAGED,STAGED,STAGED')]" />
+			<munit-tools:assert-that expression="#[vars.upload.state]" is="#[MunitTools::equalTo('STAGED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-stores-nothing-when-any-file-fails" description="One good file and one renamed text file: 422 lists both and nothing is stored">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p1: {headers: {'Content-Disposition': {name: 'p1', filename: 'address_proof.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('anVzdCBzb21lIHBsYWluIHRleHQsIG5vdCBhIGRvY3VtZW50')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			<set-variable variableName="rules" value="#[output application/java --- {rules: [{docType: 'ID_PROOF', requiredCount: 1, maxSizeBytes: 100, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'ADDRESS_PROOF', requiredCount: 1, maxSizeBytes: 1000, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'PAYSLIP', requiredCount: 2, maxSizeBytes: 1000, allowedExtensions: ['pdf','png'], allowedMimeTypes: ['application/pdf','image/png']}]}]" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(422)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('DOCUMENT_VALIDATION_FAILED')]" />
+			<munit-tools:assert-that expression="#[payload.details.rejected]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.details.files map ((f) -&gt; f.reasonCode default 'OK') joinBy ',']" is="#[MunitTools::equalTo('OK,UNSUPPORTED_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-gate-reports-the-right-reason-for-each-file" description="Every kind of bad file gets its own reason code and a plain-language message">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'id_proof.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p1: {headers: {'Content-Disposition': {name: 'p1', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMiAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p2: {headers: {'Content-Disposition': {name: 'p2', filename: 'payslip_2.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMiAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p3: {headers: {'Content-Disposition': {name: 'p3', filename: 'address_proof.pdf'}, 'Content-Type': ''}, content: dw::core::Binaries::fromBase64('anVzdCBzb21lIHBsYWluIHRleHQsIG5vdCBhIGRvY3VtZW50')}, p4: {headers: {'Content-Disposition': {name: 'p4', filename: 'payslip_3.png'}, 'Content-Type': 'image/png'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p5: {headers: {'Content-Disposition': {name: 'p5', filename: 'payslip_4.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKbm8gZW5kIG1hcmtlciBoZXJl')}, p6: {headers: {'Content-Disposition': {name: 'p6', filename: 'payslip_5.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('')}, p7: {headers: {'Content-Disposition': {name: 'p7', filename: 'payslip_6.exe'}, 'Content-Type': 'application/octet-stream'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p8: {headers: {'Content-Disposition': {name: 'p8', filename: 'notes.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p9: {headers: {'Content-Disposition': {name: 'p9', filename: 'pay slip.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p10: {headers: {'Content-Disposition': {name: 'p10', filename: 'id_proof_2.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHgKJSVFT0YK')}, p11: {headers: {'Content-Disposition': {name: 'p11', filename: 'payslip_7.pdf'}, 'Content-Type': 'image/png'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			<set-variable variableName="rules" value="#[output application/java --- {rules: [{docType: 'ID_PROOF', requiredCount: 1, maxSizeBytes: 100, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'ADDRESS_PROOF', requiredCount: 1, maxSizeBytes: 1000, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'PAYSLIP', requiredCount: 2, maxSizeBytes: 1000, allowedExtensions: ['pdf','png'], allowedMimeTypes: ['application/pdf','image/png']}]}]" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(422)]" />
+			<munit-tools:assert-that expression="#[payload.details.files map ((f) -&gt; f.reasonCode default 'OK') joinBy ',']" is="#[MunitTools::equalTo('OK,OK,DUPLICATE_CONTENT,UNSUPPORTED_TYPE,UNSUPPORTED_TYPE,EMPTY_OR_UNREADABLE,EMPTY_OR_UNREADABLE,UNSUPPORTED_TYPE,UNSUPPORTED_TYPE,UNSUPPORTED_TYPE,FILE_TOO_LARGE,UNSUPPORTED_TYPE')]" />
+			<munit-tools:assert-that expression="#[vars.upload.checked map ((c) -&gt; c.detail default 'OK') joinBy ',']" is="#[MunitTools::equalTo('OK,OK,DUPLICATE,CONTENT,EXTENSION_CONTENT_MISMATCH,TRUNCATED,EMPTY,EXTENSION,NAME,BAD_NAME,TOO_LARGE,DECLARED_TYPE_MISMATCH')]" />
+			<munit-tools:assert-that expression="#[sizeOf(payload.details.files filter ((f) -&gt; f.status == 'REJECTED' and f.message != null))]" is="#[MunitTools::equalTo(10)]" />
+			<munit-tools:assert-that expression="#[payload.details.rejected]" is="#[MunitTools::equalTo(10)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-refuses-a-bad-folder-name" description="A folder name with a path in it is a 400 and the store is not touched">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: '..x'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:verify-call processor="s3:list-objects" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(400)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('INVALID_FOLDER')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-requires-the-product" description="No product query parameter is a 400">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {}}]" />
+			</munit:set-event>
+			
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:verify-call processor="s3:list-objects" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(400)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('INVALID_PRODUCT')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-requires-at-least-one-file" description="A multipart body with no file part is a 400">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {note: {headers: {'Content-Disposition': {name: 'note'}}, content: 'hello'}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:verify-call processor="s3:list-objects" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(400)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('NO_FILES')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-treats-a-non-multipart-body-as-no-files" description="A body that is not multipart has no parts, so it is a 400">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- 'plain text body']" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(400)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('NO_FILES')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-unknown-product-is-a-400" description="When the system API has no checklist for the product the answer is 400 UNKNOWN_PRODUCT">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:NOT_FOUND" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'ZZ'}}]" />
+			</munit:set-event>
+			
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(400)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('UNKNOWN_PRODUCT')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-refuses-more-files-than-the-folder-can-hold" description="19 files already in the folder plus 2 new names is over the limit of 20: 422 TOO_MANY_FILES">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[(1 to 19) map ((i) -&gt; {key: 'staging/ab-123/old' ++ (i as String) ++ '.pdf'})]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}, p1: {headers: {'Content-Disposition': {name: 'p1', filename: 'payslip_2.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMiAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			<set-variable variableName="rules" value="#[output application/java --- {rules: [{docType: 'ID_PROOF', requiredCount: 1, maxSizeBytes: 100, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'ADDRESS_PROOF', requiredCount: 1, maxSizeBytes: 1000, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'PAYSLIP', requiredCount: 2, maxSizeBytes: 1000, allowedExtensions: ['pdf','png'], allowedMimeTypes: ['application/pdf','image/png']}]}]" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="0" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(422)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('TOO_MANY_FILES')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="upload-replacing-an-existing-file-does-not-count-twice" description="Re-uploading a name that is already in the folder overwrites it and does not count against the limit">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-load-checklist" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[(1 to 20) map ((i) -&gt; {key: 'staging/ab-123/' ++ (if (i == 1) 'payslip_1' else 'old' ++ (i as String)) ++ '.pdf'})]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:put-object">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/java --- {parts: {p0: {headers: {'Content-Disposition': {name: 'p0', filename: 'payslip_1.pdf'}, 'Content-Type': 'application/pdf'}, content: dw::core::Binaries::fromBase64('JVBERi0xLjQKMSAwIG9iajw8Pj5lbmRvYmoKdHJhaWxlcjw8Pj4KJSVFT0YK')}}}]" mediaType="application/java" />
+				<munit:attributes value="#[{uriParams: {folder: 'ab-123'}, queryParams: {product: 'PL'}}]" />
+			</munit:set-event>
+			<set-variable variableName="rules" value="#[output application/java --- {rules: [{docType: 'ID_PROOF', requiredCount: 1, maxSizeBytes: 100, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'ADDRESS_PROOF', requiredCount: 1, maxSizeBytes: 1000, allowedExtensions: ['pdf','jpg','jpeg','png'], allowedMimeTypes: ['application/pdf','image/jpeg','image/png']},{docType: 'PAYSLIP', requiredCount: 2, maxSizeBytes: 1000, allowedExtensions: ['pdf','png'], allowedMimeTypes: ['application/pdf','image/png']}]}]" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="staging-upload-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:put-object" times="1" />
+			<munit-tools:assert-that expression="#[vars.httpStatus]" is="#[MunitTools::equalTo(201)]" />
+			<munit-tools:assert-that expression="#[payload.code]" is="#[MunitTools::equalTo('FILES_STAGED')]" />
+		</munit:validation>
+	</munit:test>
+</mule>

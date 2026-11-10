@@ -1,44 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-      xmlns:http="http://www.mulesoft.org/schema/mule/http"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="
-        http://www.mulesoft.org/schema/mule/core
-        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-        http://www.mulesoft.org/schema/mule/http
-        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
-
-    <!-- HTTP Listener: Notification application runs on port 8705 -->
-    <http:listener-config
-        name="HTTP_Listener_Config"
-        doc:name="HTTP Listener Configuration">
-
-        <http:listener-connection
-            host="0.0.0.0"
-            port="8705"/>
-    </http:listener-config>
-
-    <!-- Health Check Endpoint -->
-    <flow name="notification-health-flow">
-
-        <http:listener
-            config-ref="HTTP_Listener_Config"
-            path="/api/health"
-            allowedMethods="GET"
-            doc:name="Health Check Listener"/>
-
-        <set-payload
-            value='{"status":"UP","service":"loan-notification-proc","port":8705}'
-            mimeType="application/json"
-            doc:name="Health Response"/>
-
-        <logger
-            level="INFO"
-            message="Notification service health check requested"
-            doc:name="Health Check Logger"/>
-
-    </flow>
-
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="health-flow">
+		<http:listener doc:name="Listener" config-ref="HTTP_Listener_config" path="/api/health" allowedMethods="GET">
+			<http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	status: "UP",
+	app: p('app.name')
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
 </mule>

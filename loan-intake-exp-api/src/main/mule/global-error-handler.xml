@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<error-handler name="global-error-handler">
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="400" type="APIKIT:BAD_REQUEST, APP:BAD_REQUEST">
+			<set-variable value="400" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="BAD_REQUEST" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="404" type="APIKIT:NOT_FOUND, APP:NOT_FOUND">
+			<set-variable value="404" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="NOT_FOUND" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="405" type="APIKIT:METHOD_NOT_ALLOWED">
+			<set-variable value="405" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="METHOD_NOT_ALLOWED" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="406" type="APIKIT:NOT_ACCEPTABLE">
+			<set-variable value="406" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="NOT_ACCEPTABLE" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="409" type="APP:CONFLICT">
+			<set-variable value="409" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="CONFLICT" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="415" type="APIKIT:UNSUPPORTED_MEDIA_TYPE">
+			<set-variable value="415" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="UNSUPPORTED_MEDIA_TYPE" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="422" type="APP:UNPROCESSABLE">
+			<set-variable value="422" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="UNPROCESSABLE" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="501" type="APIKIT:NOT_IMPLEMENTED">
+			<set-variable value="501" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="NOT_IMPLEMENTED" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="503" type="HTTP:CONNECTIVITY, HTTP:TIMEOUT, HTTP:SERVICE_UNAVAILABLE, HTTP:BAD_GATEWAY, HTTP:INTERNAL_SERVER_ERROR, APP:UNAVAILABLE">
+			<set-variable value="503" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="SERVICE_UNAVAILABLE" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="false" logException="false" doc:name="500">
+			<set-variable value="500" doc:name="Set httpStatus" variableName="httpStatus" />
+			<set-variable value="INTERNAL_ERROR" doc:name="Set errorCode" variableName="errorCode" />
+			<flow-ref doc:name="sf-build-error-response" name="sf-build-error-response" />
+		</on-error-propagate>
+	</error-handler>
+	<sub-flow name="sf-build-error-response">
+		<logger level="ERROR" doc:name="Logger" category="com.loan.intake.error" message="#['status=' ++ (vars.httpStatus as String) ++ ' code=' ++ vars.errorCode ++ ' errorType=' ++ (error.errorType.namespace default '') ++ ':' ++ (error.errorType.identifier default '') ++ ' correlationId=' ++ correlationId]" />
+		<set-variable value="#[{'Content-Type': 'application/json'}]" doc:name="Set outboundHeaders" variableName="outboundHeaders" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/error-body.dwl" />
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+</mule>

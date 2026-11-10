@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="get:\bureau\reports\(identityRef):loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.identityRef]" doc:name="Set identityRef" variableName="identityRef" />
+		<db:select doc:name="Get bureau flag" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT flag_value
+FROM system_flags
+WHERE flag_key = 'bureau_enabled']]></db:sql>
+		</db:select>
+		<choice doc:name="Choice">
+			<when expression="#[payload[0].flag_value == 'false']">
+				<set-variable value="UNAVAILABLE" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Credit bureau is unavailable" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<db:select doc:name="Get bureau history" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT identity_ref, bureau_score, missed_payments_24m, active_default
+FROM applicant_history
+WHERE identity_ref = :identityRef]]></db:sql>
+			<db:input-parameters><![CDATA[#[{identityRef: vars.identityRef}]]]></db:input-parameters>
+		</db:select>
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(payload)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="No bureau record for this applicant" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var h = payload[0]
+---
+{
+	identityRef: h.identity_ref,
+	bureauScore: h.bureau_score,
+	missedPayments24m: h.missed_payments_24m,
+	activeDefault: h.active_default
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="get:\bureau\switch:loan-system-api-config">
+		<db:select doc:name="Get bureau flag" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT flag_value
+FROM system_flags
+WHERE flag_key = 'bureau_enabled']]></db:sql>
+		</db:select>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ enabled: (payload[0].flag_value default "true") == "true" }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="put:\bureau\switch:application\json:loan-system-api-config">
+		<set-variable value="#[output application/java --- if (payload.enabled) 'true' else 'false']" doc:name="Set flagValue" variableName="flagValue" />
+		<db:select doc:name="Set bureau flag" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH u AS (
+    INSERT INTO system_flags (flag_key, flag_value)
+    VALUES ('bureau_enabled', :flagValue)
+    ON CONFLICT (flag_key) DO UPDATE SET flag_value = EXCLUDED.flag_value, updated_at = now()
+    RETURNING flag_value
+)
+SELECT flag_value FROM u]]></db:sql>
+			<db:input-parameters><![CDATA[#[{flagValue: vars.flagValue}]]]></db:input-parameters>
+		</db:select>
+		<logger level="INFO" doc:name="Logger" category="com.loan.system.bureau" message="#['bureau switch set to ' ++ vars.flagValue ++ ' correlationId=' ++ correlationId]" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ enabled: payload[0].flag_value == "true" }]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

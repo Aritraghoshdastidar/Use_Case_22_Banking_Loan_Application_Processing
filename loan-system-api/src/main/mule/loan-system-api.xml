@@ -1,46 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-      xmlns:http="http://www.mulesoft.org/schema/mule/http"
-      xmlns:db="http://www.mulesoft.org/schema/mule/db"
-      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="
-        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
-        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
-        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
-        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
-
-    <!-- Entry point: listener -> APIkit router. Business logic lives in the per-resource flows. -->
-    <flow name="loan-system-api-main-flow">
-        <http:listener config-ref="HTTP_Listener_config" path="${http.listener.basePath}" doc:name="Listener">
-            <http:response statusCode="#[vars.httpStatus default 200]">
-                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
-            </http:response>
-            <http:error-response statusCode="#[vars.httpStatus default 500]">
-                <http:body>#[payload]</http:body>
-                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
-            </http:error-response>
-        </http:listener>
-        <logger level="INFO" category="com.loan.system.main"
-                message="#['request ' ++ attributes.method ++ ' ' ++ attributes.requestPath ++ ' correlationId=' ++ correlationId]"/>
-        <apikit:router config-ref="loan-system-api-config"/>
-    </flow>
-
-    <!-- GET /health: liveness plus database connectivity. DB down -> DB:CONNECTIVITY -> 503 via global handler. -->
-    <flow name="get:\health:loan-system-api-config">
-        <db:select config-ref="Database_Config" doc:name="Ping database">
-            <db:sql>SELECT 1 AS ok</db:sql>
-        </db:select>
-        <ee:transform doc:name="Health body">
-            <ee:message>
-                <ee:set-payload><![CDATA[%dw 2.0
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="loan-system-api-main-flow">
+		<http:listener doc:name="Listener" config-ref="HTTP_Listener_config" path="${http.listener.basePath}">
+			<http:response statusCode="#[vars.httpStatus default 200]">
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="#[vars.httpStatus default 500]">
+				<http:body><![CDATA[#[payload]]]></http:body>
+				<http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<logger level="INFO" doc:name="Logger" category="com.loan.system.main" message="#['request ' ++ attributes.method ++ ' ' ++ (attributes.requestPath replace /[A-Z]{5}[0-9]{4}[A-Z]/ with '[masked]') ++ ' correlationId=' ++ correlationId]" />
+		<apikit:router doc:name="APIkit Router" config-ref="loan-system-api-config" />
+	</flow>
+	<flow name="get:\health:loan-system-api-config">
+		<db:select doc:name="Ping database" config-ref="Database_Config">
+			<db:sql>SELECT 1 AS ok</db:sql>
+		</db:select>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
-{ status: "UP", database: "UP" }]]></ee:set-payload>
-            </ee:message>
-        </ee:transform>
-    </flow>
+{
+	status: "UP",
+	database: "UP"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
 </mule>

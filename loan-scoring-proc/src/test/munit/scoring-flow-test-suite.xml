@@ -1,0 +1,924 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="scoring-flow-test-suite.xml" />
+	<munit:test name="verified-application-is-scored-and-decided" description="A verified application is moved to SCORING, the bureau is read and one decision is saved">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'VERIFIED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.outcome.decision]" is="#[MunitTools::equalTo('APPROVED')]" />
+			<munit-tools:assert-that expression="#[vars.outcome.decidingRule]" is="#[MunitTools::equalTo('BAND')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-already-in-scoring-is-resumed" description="A restart after the move to SCORING does not move it again and still reaches a decision">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'SCORING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-received-is-not-scored" description="Scoring only applies to VERIFIED or SCORING; anything else is skipped without a call">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'RECEIVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-verifying-is-not-scored" description="Scoring only applies to VERIFIED or SCORING; anything else is skipped without a call">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-documents-incomplete-is-not-scored" description="Scoring only applies to VERIFIED or SCORING; anything else is skipped without a call">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-approved-is-not-scored" description="Scoring only applies to VERIFIED or SCORING; anything else is skipped without a call">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-declined-is-not-scored" description="Scoring only applies to VERIFIED or SCORING; anything else is skipped without a call">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'DECLINED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-referred-is-not-scored" description="Scoring only applies to VERIFIED or SCORING; anything else is skipped without a call">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'REFERRED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="missing-bureau-record-is-referred-as-data-unavailable" description="A 404 from the bureau is not an error: the decision is REFERRED with reason DATA_UNAVAILABLE (N17)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'VERIFIED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'NOT_FOUND', message: 'No bureau record for this applicant'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 404}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.outcome.decision]" is="#[MunitTools::equalTo('REFERRED')]" />
+			<munit-tools:assert-that expression="#[vars.outcome.decidingRule]" is="#[MunitTools::equalTo('DATA_UNAVAILABLE')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="bureau-switched-off-is-referred-as-data-unavailable" description="A 503 from the bureau is treated the same way, never retried into an approval (AC11)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'VERIFIED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'SERVICE_UNAVAILABLE', message: 'Credit bureau is unavailable'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 503}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-score-application" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.outcome.decision]" is="#[MunitTools::equalTo('REFERRED')]" />
+			<munit-tools:assert-that expression="#[vars.outcome.decidingRule]" is="#[MunitTools::equalTo('DATA_UNAVAILABLE')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="bureau-report-is-used-when-it-can-be-read" description="A 200 gives a report that drives the score">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'SCORING'}]" variableName="app" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-read-bureau" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.bureau.bureauScore]" is="#[MunitTools::equalTo(780)]" />
+			<munit-tools:assert-that expression="#[vars.bureau.activeDefault]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unreadable-bureau-leaves-no-report" description="A 404 leaves no report, so the decision step takes the DATA_UNAVAILABLE route">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'SCORING'}]" variableName="app" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'NOT_FOUND', message: 'No bureau record for this applicant'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 404}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-read-bureau" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.bureau]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-decision-save-is-a-temporary-error" description="If the decision cannot be saved the error propagates, so the consumer retries and nothing is acknowledged">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'VERIFIED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-score-application" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('CONNECTIVITY')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unknown-application-is-a-permanent-error" description="A 404 for the application propagates as NOT_FOUND, which the consumer dead-letters without retrying">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:NOT_FOUND" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start scoring" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'SCORING'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', annualRatePct: 12, minAmount: 50000, maxAgeAtMaturity: 65, emiCeilingPct: 50, amountStep: 1000}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get scorecard" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{version: 'SC-1.0', approveMinScore: 70, referMinScore: 50, offerValidityDays: 30, factors: [{factor: 'BUREAU_SCORE', weight: 35, zeroPointsAt: 600, fullPointsAt: 750}, {factor: 'DEBT_TO_INCOME', weight: 20, zeroPointsAt: 0.6, fullPointsAt: 0.3}, {factor: 'LOAN_TO_INCOME', weight: 15, zeroPointsAt: 5, fullPointsAt: 1}, {factor: 'EMPLOYMENT_STABILITY', weight: 15, zeroPointsAt: 6, fullPointsAt: 36}, {factor: 'REPAYMENT_HISTORY', weight: 15, zeroPointsAt: 3, fullPointsAt: 0}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau report" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{identityRef: 'ABCDE1234F', bureauScore: 780, missedPayments24m: 0, activeDefault: false}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 200}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{decision: 'APPROVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-score-application" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('NOT_FOUND')]" />
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save decision" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="scoring-start-body-guards-the-stage" description="Moving to SCORING only applies from VERIFIED">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', productCode: 'PL', identityRef: 'ABCDE1234F', requestedAmount: 200000, requestedTenure: 24, monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48, dateOfBirth: '1990-05-15', stage: 'VERIFIED'}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/start-scoring.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.toStage]" is="#[MunitTools::equalTo('SCORING')]" />
+			<munit-tools:assert-that expression="#[payload.expectedFromStage]" is="#[MunitTools::equalTo('VERIFIED')]" />
+			<munit-tools:assert-that expression="#[payload.correlationId]" is="#[MunitTools::equalTo('22222222-2222-4222-8222-222222222222')]" />
+		</munit:validation>
+	</munit:test>
+</mule>

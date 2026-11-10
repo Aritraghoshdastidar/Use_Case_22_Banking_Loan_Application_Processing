@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<global-property doc:name="Global Property" name="mule.env" value="local" />
+	<configuration-properties doc:name="Configuration properties" file="config-${mule.env}.yaml" />
+	<configuration doc:name="Configuration" defaultErrorHandler-ref="global-error-handler" />
+	<import file="autodiscovery-${mule.env}.xml" />
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" file="secure-${mule.env}.yaml" key="${secure.key}" />
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+		<http:listener-connection host="${http.listener.host}" port="${http.listener.port}" />
+	</http:listener-config>
+	<http:request-config name="System_API_Request_config" doc:name="HTTP Request configuration" basePath="${system.api.basePath}" responseTimeout="${system.api.timeoutMillis}">
+		<http:request-connection host="${system.api.host}" port="${system.api.port}" protocol="${system.api.protocol}" />
+	</http:request-config>
+	<amqp:config name="AMQP_Config" doc:name="AMQP Config">
+		<amqp:connection host="${amqp.host}" port="${amqp.port}" virtualHost="${amqp.virtualHost}" username="${amqp.user}" password="${secure::amqp.password}" />
+	</amqp:config>
+	<s3:config name="S3_Config" doc:name="S3 Config">
+		<s3:connection accessKey="${store.accessKey}" secretKey="${secure::store.secretKey}" region="${store.region}" customServiceEndpoint="${store.endpoint}" />
+	</s3:config>
+	<os:object-store name="File_Snapshot_Store" doc:name="Object store: file size snapshots" persistent="false" entryTtl="${cache.snapshotTtlHours}" entryTtlUnit="HOURS" />
+	<os:object-store name="Rules_Cache_Store" doc:name="Object store: checklist cache" persistent="false" entryTtl="${cache.rulesTtlSeconds}" entryTtlUnit="SECONDS" />
+	<ee:object-store-caching-strategy name="Rules_Cache_Strategy" doc:name="Caching strategy: checklist" keyGenerationExpression="#[vars.app.productCode]" objectStore="Rules_Cache_Store" />
+</mule>

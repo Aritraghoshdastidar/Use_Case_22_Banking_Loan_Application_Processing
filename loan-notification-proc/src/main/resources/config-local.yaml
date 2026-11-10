@@ -1,0 +1,50 @@
+app:
+  name: "loan-notification-proc"
+http:
+  listener:
+    host: "0.0.0.0"
+    port: "8705"
+    basePath: "/api/*"
+system:
+  api:
+    host: "localhost"
+    port: "8701"
+    protocol: "HTTP"
+    basePath: "/api"
+    timeoutMillis: "10000"
+amqp:
+  host: "localhost"
+  port: "5672"
+  virtualHost: "/"
+  user: "loan"
+  exchange: "loan.exchange"
+sweeper:
+  frequencyMillis: "5000"
+  batchSize: "50"
+  blockSize: "10"
+  lockSeconds: "120"
+consumer:
+  name: "notification-proc"
+  queue: "loan.decision.q"
+retry:
+  baseMillis: "2000"
+  maxRetries: "3"
+mail:
+  host: "localhost"
+  port: "1025"
+  user: "loan"
+  from: "no-reply@loan-platform.local"
+  underwritingTo: "underwriting@loan-platform.local"
+  reviewContact: "loan.review@loan-platform.local"
+  statusBaseUrl: "http://localhost:8702/api"
+  referralDays: "3"
+  reviewDays: "30"
+notify:
+  maxAttempts: "5"
+  retryFrequencyMillis: "20000"
+  backoffBaseSeconds: "10"
+  pendingGraceSeconds: "60"
+  alertFrequencyMillis: "30000"
+  alertAfterSeconds: "60"
+digest:
+  cron: "0 0 9 * * ?"

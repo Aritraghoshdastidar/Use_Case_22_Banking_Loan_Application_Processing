@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="global-error-handler-test-suite.xml" />
+	<flow name="raise-0"><flow-ref name="boom-0" /></flow>
+	<sub-flow name="boom-0"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-1"><flow-ref name="boom-1" /></flow>
+	<sub-flow name="boom-1"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-2"><flow-ref name="boom-2" /></flow>
+	<sub-flow name="boom-2"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-3"><flow-ref name="boom-3" /></flow>
+	<sub-flow name="boom-3"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-4"><flow-ref name="boom-4" /></flow>
+	<sub-flow name="boom-4"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-5"><flow-ref name="boom-5" /></flow>
+	<sub-flow name="boom-5"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-6"><flow-ref name="boom-6" /></flow>
+	<sub-flow name="boom-6"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-7"><flow-ref name="boom-7" /></flow>
+	<sub-flow name="boom-7"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-8"><flow-ref name="boom-8" /></flow>
+	<sub-flow name="boom-8"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-9"><flow-ref name="boom-9" /></flow>
+	<sub-flow name="boom-9"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-10"><flow-ref name="boom-10" /></flow>
+	<sub-flow name="boom-10"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-11"><flow-ref name="boom-11" /></flow>
+	<sub-flow name="boom-11"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-12"><flow-ref name="boom-12" /></flow>
+	<sub-flow name="boom-12"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<flow name="raise-13"><flow-ref name="boom-13" /></flow>
+	<sub-flow name="boom-13"><logger level="DEBUG" message="not reached" /></sub-flow>
+	<munit:test name="error-apikit-bad-request-maps-to-400" description="APIKIT:BAD_REQUEST is answered with HTTP 400 and code BAD_REQUEST">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-0" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APIKIT:BAD_REQUEST" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-0" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('400')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('BAD_REQUEST')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-app-bad-request-maps-to-400" description="APP:BAD_REQUEST is answered with HTTP 400 and code BAD_REQUEST">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-1" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APP:BAD_REQUEST" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-1" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('400')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('BAD_REQUEST')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-validation-mismatch-maps-to-400" description="VALIDATION:MISMATCH is answered with HTTP 400 and code BAD_REQUEST">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-2" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="VALIDATION:MISMATCH" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-2" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('400')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('BAD_REQUEST')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-apikit-not-found-maps-to-404" description="APIKIT:NOT_FOUND is answered with HTTP 404 and code NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-3" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APIKIT:NOT_FOUND" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-3" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('404')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('NOT_FOUND')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-app-not-found-maps-to-404" description="APP:NOT_FOUND is answered with HTTP 404 and code NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-4" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APP:NOT_FOUND" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-4" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('404')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('NOT_FOUND')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-method-not-allowed-maps-to-405" description="APIKIT:METHOD_NOT_ALLOWED is answered with HTTP 405 and code METHOD_NOT_ALLOWED">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-5" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APIKIT:METHOD_NOT_ALLOWED" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-5" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('405')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('METHOD_NOT_ALLOWED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-not-acceptable-maps-to-406" description="APIKIT:NOT_ACCEPTABLE is answered with HTTP 406 and code NOT_ACCEPTABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-6" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APIKIT:NOT_ACCEPTABLE" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-6" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('406')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('NOT_ACCEPTABLE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-conflict-maps-to-409" description="APP:CONFLICT is answered with HTTP 409 and code CONFLICT">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-7" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APP:CONFLICT" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-7" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('409')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('CONFLICT')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-unsupported-media-maps-to-415" description="APIKIT:UNSUPPORTED_MEDIA_TYPE is answered with HTTP 415 and code UNSUPPORTED_MEDIA_TYPE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-8" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APIKIT:UNSUPPORTED_MEDIA_TYPE" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-8" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('415')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('UNSUPPORTED_MEDIA_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-not-implemented-maps-to-501" description="APIKIT:NOT_IMPLEMENTED is answered with HTTP 501 and code NOT_IMPLEMENTED">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-9" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APIKIT:NOT_IMPLEMENTED" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-9" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('501')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('NOT_IMPLEMENTED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-database-down-maps-to-503" description="DB:CONNECTIVITY is answered with HTTP 503 and code SERVICE_UNAVAILABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-10" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="DB:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-10" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('503')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('SERVICE_UNAVAILABLE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-query-failure-maps-to-503" description="DB:QUERY_EXECUTION is answered with HTTP 503 and code SERVICE_UNAVAILABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-11" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="DB:QUERY_EXECUTION" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-11" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('503')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('SERVICE_UNAVAILABLE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-unavailable-maps-to-503" description="APP:UNAVAILABLE is answered with HTTP 503 and code SERVICE_UNAVAILABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-12" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="APP:UNAVAILABLE" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-12" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('503')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('SERVICE_UNAVAILABLE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="error-anything-else-maps-to-500" description="MULE:EXPRESSION is answered with HTTP 500 and code INTERNAL_ERROR">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="boom-13" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="MULE:EXPRESSION" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="raise-13" /><error-handler><on-error-continue><set-variable value="#[vars.httpStatus]" variableName="status" /><set-variable value="#[vars.errorCode]" variableName="code" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.status as String]" is="#[MunitTools::equalTo('500')]" />
+			<munit-tools:assert-that expression="#[vars.code]" is="#[MunitTools::equalTo('INTERNAL_ERROR')]" />
+		</munit:validation>
+	</munit:test>
+</mule>

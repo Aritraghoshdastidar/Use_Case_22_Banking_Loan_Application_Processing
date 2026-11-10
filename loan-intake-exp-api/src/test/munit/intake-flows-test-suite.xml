@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="intake-flows-test-suite.xml" />
+	<munit:before-test name="build-request">
+		<set-variable value="#[{requestId: 'REQ-1', productCode: 'PL', amount: 200000, tenureMonths: 24, applicant: {fullName: 'Asha Verma', dateOfBirth: '1990-05-15', identityRef: 'ABCDE1234F', email: 'asha@example.com', monthlyIncome: 90000, monthlyObligations: 10000, employmentMonths: 48}, documents: {folder: 'complete-ok', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}]}}]" doc:name="Set validRequest" variableName="validRequest" />
+	</munit:before-test>
+	<munit:test name="create-application-returns-202-with-status-url" description="A valid request is recorded and answered with 202, the id and a status URL">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', minAmount: 50000, maxAmount: 1000000, minTenureMonths: 6, maxTenureMonths: 60, minAgeAtApplication: 21, maxAgeAtApplication: 60, active: true}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Create application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', created: true, stage: 'RECEIVED'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- vars.validRequest]" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('202')]" />
+			<munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000001')]" />
+			<munit-tools:assert-that expression="#[payload.statusUrl]" is="#[MunitTools::equalTo('http://localhost:8702/api/applications/APP-2026-000001/status')]" />
+			<munit-tools:assert-that expression="#[vars.outboundHeaders.Location]" is="#[MunitTools::equalTo('http://localhost:8702/api/applications/APP-2026-000001/status')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="duplicate-submission-is-answered-the-same-way" description="When the system API returns the existing application the caller still gets 202 and the original id">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', minAmount: 50000, maxAmount: 1000000, minTenureMonths: 6, maxTenureMonths: 60, minAgeAtApplication: 21, maxAgeAtApplication: 60, active: true}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Create application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000007', created: false, stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- vars.validRequest]" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('202')]" />
+			<munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000007')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="same-request-id-with-different-payload-is-a-conflict" description="A 409 from the system API becomes a 409 for the caller" expectedErrorType="APP:CONFLICT">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', minAmount: 50000, maxAmount: 1000000, minTenureMonths: 6, maxTenureMonths: 60, minAgeAtApplication: 21, maxAgeAtApplication: 60, active: true}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Create application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'CONFLICT', message: 'different payload'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 409}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- vars.validRequest]" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="unknown-product-is-unprocessable" description="A product the system API does not know is a 422, never a default policy" expectedErrorType="APP:UNPROCESSABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:NOT_FOUND" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- vars.validRequest]" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="inactive-product-is-unprocessable" description="A product switched off is treated as unknown" expectedErrorType="APP:UNPROCESSABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', minAmount: 50000, maxAmount: 1000000, minTenureMonths: 6, maxTenureMonths: 60, minAgeAtApplication: 21, maxAgeAtApplication: 60, active: false}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- vars.validRequest]" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="amount-outside-limits-is-unprocessable-and-nothing-is-recorded" description="The limits check stops the flow before anything is created" expectedErrorType="APP:UNPROCESSABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', minAmount: 50000, maxAmount: 1000000, minTenureMonths: 6, maxTenureMonths: 60, minAgeAtApplication: 21, maxAgeAtApplication: 60, active: true}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- vars.validRequest update { case .amount -&gt; 5 }]" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="missing-fields-are-rejected-without-calling-the-system-api" description="A request with no fields is a 400 and never reaches the system API" expectedErrorType="APP:BAD_REQUEST">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#['{}']" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="body-that-is-not-json-is-a-bad-request" description="Garbage in the body is a 400, not a 500" expectedErrorType="APP:BAD_REQUEST">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#['this is not json']" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="system-api-outage-is-not-hidden-behind-a-202" description="If the system API is down the caller gets a service error, never a false acceptance" expectedErrorType="HTTP:SERVICE_UNAVAILABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get product" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'PL', minAmount: 50000, maxAmount: 1000000, minTenureMonths: 6, maxTenureMonths: 60, minAgeAtApplication: 21, maxAgeAtApplication: 60, active: true}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Create application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:SERVICE_UNAVAILABLE" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- vars.validRequest]" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications:application\json:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="status-hides-internal-details" description="Stage, inventory and decision reasons come back; scores, identity and income do not">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', stage: 'APPROVED', stageReason: null, identityRef: 'ABCDE1234F', email: 'a@b.com', monthlyIncome: 90000, documents: [{docType: 'PAYSLIP', fileName: 'p1.pdf', status: 'ACCEPTED', sha256: 'abc', sourcePath: 'staging/x/p1.pdf', storedPath: 'verified/a/p1.pdf'}], decision: {decision: 'APPROVED', score: 81.5, reasonCodes: ['BAND_APPROVE'], approvedAmount: 180000, approvedTenure: 24, approvedRatePct: 12, instalment: 8472.5, reductionReason: 'AFFORDABILITY_REDUCED', ruleHits: [{ruleCode: 'BUREAU_SCORE'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\applications\(applicationId)\status:loan-intake-exp-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.stage]" is="#[MunitTools::equalTo('APPROVED')]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].status]" is="#[MunitTools::equalTo('ACCEPTED')]" />
+			<munit-tools:assert-that expression="#[payload.decision.reasonCodes[0]]" is="#[MunitTools::equalTo('BAND_APPROVE')]" />
+			<munit-tools:assert-that expression="#[payload.decision.approvedAmount]" is="#[MunitTools::equalTo(180000)]" />
+			<munit-tools:assert-that expression="#[payload.identityRef]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:assert-that expression="#[payload.decision.score]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].storedPath]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="status-of-unknown-application-is-not-found" description="404 from the system API is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:NOT_FOUND" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\applications\(applicationId)\status:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="resubmit-returns-202-with-status-url" description="Resubmit is accepted and points at the status URL">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Resubmit application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', stage: 'VERIFYING', verificationRound: 2}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications\(applicationId)\resubmit:loan-intake-exp-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('202')]" />
+			<munit-tools:assert-that expression="#[payload.statusUrl]" is="#[MunitTools::equalTo('http://localhost:8702/api/applications/APP-2026-000001/status')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="resubmit-at-the-wrong-stage-is-a-conflict" description="409 from the system API is a 409" expectedErrorType="APP:CONFLICT">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Resubmit application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{code: 'CONFLICT', message: 'wrong stage'}]" mediaType="application/java" />
+					<munit-tools:attributes value="#[{statusCode: 409}]" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications\(applicationId)\resubmit:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="resubmit-of-unknown-application-is-not-found" description="404 from the system API is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Resubmit application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:NOT_FOUND" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\applications\(applicationId)\resubmit:loan-intake-exp-api-config" />
+		</munit:execution>
+	</munit:test>
+</mule>

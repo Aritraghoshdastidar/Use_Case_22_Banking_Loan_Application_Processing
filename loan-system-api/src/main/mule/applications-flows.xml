@@ -1,128 +1,193 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
-<mule xmlns="http://www.mulesoft.org/schema/mule/core"
-      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-      xmlns:db="http://www.mulesoft.org/schema/mule/db"
-      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
-      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-      xsi:schemaLocation="
-        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
-        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
-
-    <!--
-      POST /applications
-      Creates the application + its VERIFY_REQUESTED outbox message + the RECEIVED audit row in ONE SQL statement
-      (atomic). A duplicate request_id inserts nothing, so we then look the application up:
-        same payloadHash  -> 200, created=false, original applicationId (FR 3, scenario 5)
-        other payloadHash -> 409 (extra scenario: same id, different payload)
-    -->
-    <flow name="post:\applications:application\json:loan-system-api-config">
-        <ee:transform doc:name="Build SQL parameters">
-            <ee:message/>
-            <ee:variables>
-                <ee:set-variable variableName="params" resource="dwl/create-application-params.dwl"/>
-                <ee:set-variable variableName="incomingHash"><![CDATA[%dw 2.0
-output application/java
----
-payload.payloadHash]]></ee:set-variable>
-                <ee:set-variable variableName="requestId"><![CDATA[%dw 2.0
-output application/java
----
-payload.requestId]]></ee:set-variable>
-            </ee:variables>
-        </ee:transform>
-
-        <!-- sql/create-application.sql: one atomic statement. ON CONFLICT DO NOTHING makes request_id the idempotency key.
-             SQL FILE RULES: no comments and no "::" casts (the DB connector parses ":name" parameters); use CAST(). -->
-        <db:select config-ref="Database_Config" doc:name="Insert application, outbox and audit">
-            <db:sql>${file::sql/create-application.sql}</db:sql>
-            <db:input-parameters>#[vars.params]</db:input-parameters>
-        </db:select>
-        <set-variable variableName="inserted" value="#[payload]"/>
-
-        <choice doc:name="Created or duplicate?">
-            <when expression="#[sizeOf(vars.inserted) > 0]">
-                <set-variable variableName="httpStatus" value="201"/>
-                <set-variable variableName="appId" value="#[vars.inserted[0].application_id]"/>
-                <set-variable variableName="created" value="#[true]"/>
-                <set-variable variableName="stage" value="RECEIVED"/>
-                <logger level="INFO" category="com.loan.system.applications"
-                        message="#['application created applicationId=' ++ vars.appId ++ ' correlationId=' ++ correlationId]"/>
-            </when>
-            <otherwise>
-                <flow-ref name="sf-resolve-duplicate-application"/>
-            </otherwise>
-        </choice>
-
-        <ee:transform doc:name="Created response">
-            <ee:message>
-                <ee:set-payload><![CDATA[%dw 2.0
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="post:\applications:application\json:loan-system-api-config">
+		<set-variable value="#[payload.requestId]" doc:name="Set requestId" variableName="requestId" />
+		<set-variable value="#[payload.payloadHash]" doc:name="Set payloadHash" variableName="payloadHash" />
+		<db:select doc:name="Insert application" config-ref="Database_Config">
+			<db:sql><![CDATA[WITH ins AS (
+    INSERT INTO applications (request_id, payload_hash, correlation_id, product_code, requested_amount, requested_tenure,
+                              applicant_name, date_of_birth, identity_ref, email, monthly_income, monthly_obligations,
+                              employment_months, manifest)
+    VALUES (:requestId, :payloadHash, CAST(:correlationId AS uuid), :productCode, :requestedAmount, :requestedTenure,
+            :applicantName, CAST(:dateOfBirth AS date), :identityRef, :email, :monthlyIncome, :monthlyObligations,
+            :employmentMonths, CAST(:manifest AS jsonb))
+    ON CONFLICT (request_id) DO NOTHING
+    RETURNING application_id, correlation_id
+),
+ob AS (
+    INSERT INTO outbox (id, queue_name, payload)
+    SELECT CAST(:messageId AS uuid), 'loan.verify.q',
+           jsonb_build_object('messageId', CAST(:messageId AS text),
+                              'correlationId', CAST(ins.correlation_id AS text),
+                              'applicationId', ins.application_id,
+                              'type', 'VERIFY_REQUESTED',
+                              'attempt', 1,
+                              'createdAt', CAST(:createdAt AS text))
+    FROM ins
+),
+au AS (
+    INSERT INTO decision_audit (application_id, correlation_id, event, to_stage, source_app)
+    SELECT ins.application_id, ins.correlation_id, 'RECEIVED', 'RECEIVED', 'loan-system-api'
+    FROM ins
+)
+SELECT application_id FROM ins]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	requestId: payload.requestId,
+	payloadHash: payload.payloadHash,
+	correlationId: payload.correlationId,
+	productCode: payload.productCode,
+	requestedAmount: payload.requestedAmount,
+	requestedTenure: payload.requestedTenure,
+	applicantName: payload.applicantName,
+	dateOfBirth: payload.dateOfBirth as String,
+	identityRef: payload.identityRef,
+	email: payload.email,
+	monthlyIncome: payload.monthlyIncome,
+	monthlyObligations: payload.monthlyObligations default 0,
+	employmentMonths: payload.employmentMonths default 0,
+	manifest: write(payload.manifest, "application/json"),
+	messageId: uuid(),
+	createdAt: (now() >> "UTC") as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}
+}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set inserted" variableName="inserted" />
+		<choice doc:name="Choice">
+			<when expression="#[sizeOf(vars.inserted) &gt; 0]">
+				<set-variable value="201" doc:name="Set httpStatus" variableName="httpStatus" />
+				<set-variable value="#[vars.inserted[0].application_id]" doc:name="Set appId" variableName="appId" />
+				<set-variable value="#[true]" doc:name="Set created" variableName="created" />
+				<set-variable value="RECEIVED" doc:name="Set stage" variableName="stage" />
+				<logger level="INFO" doc:name="Logger" category="com.loan.system.applications" message="#['application created applicationId=' ++ vars.appId ++ ' correlationId=' ++ correlationId]" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="sf-resolve-duplicate-application" name="sf-resolve-duplicate-application" />
+			</otherwise>
+		</choice>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
 output application/json
 ---
-{ applicationId: vars.appId, created: vars.created, stage: vars.stage }]]></ee:set-payload>
-            </ee:message>
-        </ee:transform>
-    </flow>
-
-    <!-- A request_id that already exists: return the original, or 409 if the payload changed. -->
-    <sub-flow name="sf-resolve-duplicate-application">
-        <db:select config-ref="Database_Config" doc:name="Find application by request id">
-            <db:sql>${file::sql/find-application-by-request.sql}</db:sql>
-            <db:input-parameters>#[{requestId: vars.requestId}]</db:input-parameters>
-        </db:select>
-        <set-variable variableName="existing" value="#[payload]"/>
-        <choice doc:name="Same payload?">
-            <when expression="#[sizeOf(vars.existing) > 0 and vars.existing[0].payload_hash == vars.incomingHash]">
-                <set-variable variableName="httpStatus" value="200"/>
-                <set-variable variableName="appId" value="#[vars.existing[0].application_id]"/>
-                <set-variable variableName="created" value="#[false]"/>
-                <set-variable variableName="stage" value="#[vars.existing[0].stage]"/>
-                <logger level="INFO" category="com.loan.system.applications"
-                        message="#['duplicate submission returns existing applicationId=' ++ vars.appId]"/>
-            </when>
-            <otherwise>
-                <set-variable variableName="appError" value="CONFLICT"/>
-                <set-variable variableName="appErrorMessage" value="This request id was already used with a different payload"/>
-                <flow-ref name="sf-raise-app-error"/>
-            </otherwise>
-        </choice>
-    </sub-flow>
-
-    <!-- GET /applications/{applicationId}: application + documents + decision (feeds the status endpoint). -->
-    <flow name="get:\applications\(applicationId):loan-system-api-config">
-        <set-variable variableName="queryParams" value="#[{applicationId: attributes.uriParams.applicationId}]"/>
-        <db:select config-ref="Database_Config" doc:name="Get application">
-            <db:sql>${file::sql/get-application.sql}</db:sql>
-            <db:input-parameters>#[vars.queryParams]</db:input-parameters>
-        </db:select>
-        <set-variable variableName="app" value="#[payload]"/>
-        <choice doc:name="Found?">
-            <when expression="#[isEmpty(vars.app)]">
-                <set-variable variableName="appError" value="NOT_FOUND"/>
-                <set-variable variableName="appErrorMessage" value="Application not found"/>
-                <flow-ref name="sf-raise-app-error"/>
-            </when>
-        </choice>
-        <db:select config-ref="Database_Config" doc:name="Get documents">
-            <db:sql>${file::sql/get-application-documents.sql}</db:sql>
-            <db:input-parameters>#[vars.queryParams]</db:input-parameters>
-        </db:select>
-        <set-variable variableName="docs" value="#[payload]"/>
-        <db:select config-ref="Database_Config" doc:name="Get decision">
-            <db:sql>${file::sql/get-application-decision.sql}</db:sql>
-            <db:input-parameters>#[vars.queryParams]</db:input-parameters>
-        </db:select>
-        <set-variable variableName="decision" value="#[payload]"/>
-        <db:select config-ref="Database_Config" doc:name="Get rule hits">
-            <db:sql>${file::sql/get-application-rule-hits.sql}</db:sql>
-            <db:input-parameters>#[vars.queryParams]</db:input-parameters>
-        </db:select>
-        <set-variable variableName="hits" value="#[payload]"/>
-        <ee:transform doc:name="Application view">
-            <ee:message>
-                <ee:set-payload resource="dwl/application-response.dwl"/>
-            </ee:message>
-        </ee:transform>
-    </flow>
+{
+	applicationId: vars.appId,
+	created: vars.created,
+	stage: vars.stage
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<sub-flow name="sf-resolve-duplicate-application">
+		<db:select doc:name="Find application" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT application_id, payload_hash, stage
+FROM applications
+WHERE request_id = :requestId]]></db:sql>
+			<db:input-parameters><![CDATA[#[{requestId: vars.requestId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set existing" variableName="existing" />
+		<choice doc:name="Choice">
+			<when expression="#[sizeOf(vars.existing) &gt; 0 and vars.existing[0].payload_hash == vars.payloadHash]">
+				<set-variable value="200" doc:name="Set httpStatus" variableName="httpStatus" />
+				<set-variable value="#[vars.existing[0].application_id]" doc:name="Set appId" variableName="appId" />
+				<set-variable value="#[false]" doc:name="Set created" variableName="created" />
+				<set-variable value="#[vars.existing[0].stage]" doc:name="Set stage" variableName="stage" />
+			</when>
+			<otherwise>
+				<set-variable value="CONFLICT" doc:name="Set appError" variableName="appError" />
+				<set-variable value="This request id was already used with a different payload" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+	<flow name="get:\applications:loan-system-api-config">
+		<set-variable value="#[output application/java --- attributes.queryParams.stage]" doc:name="Set stage filter" variableName="stageFilter" />
+		<db:select doc:name="Get applications" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT application_id, product_code, requested_amount, stage, stage_reason,
+       CAST(EXTRACT(EPOCH FROM created_at) AS bigint) AS created_epoch
+FROM applications
+WHERE CAST(:stage AS text) IS NULL OR stage = CAST(:stage AS text)
+ORDER BY created_at
+LIMIT :maxRows]]></db:sql>
+			<db:input-parameters><![CDATA[#[{
+	stage: vars.stageFilter,
+	maxRows: min([(attributes.queryParams.limit default 100) as Number, 500])
+}]]]></db:input-parameters>
+		</db:select>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var nowSeconds = now() as Number {unit: "seconds"}
+---
+payload map (a) -> {
+	applicationId: a.application_id,
+	productCode: a.product_code,
+	requestedAmount: a.requested_amount,
+	stage: a.stage,
+	stageReason: a.stage_reason,
+	createdAt: a.created_epoch as DateTime {unit: "seconds"},
+	ageMinutes: floor((nowSeconds - a.created_epoch) / 60)
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="get:\applications\(applicationId):loan-system-api-config">
+		<set-variable value="#[attributes.uriParams.applicationId]" doc:name="Set applicationId" variableName="applicationId" />
+		<db:select doc:name="Get application" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT application_id, request_id, CAST(correlation_id AS text) AS correlation_id, product_code,
+       requested_amount, requested_tenure, applicant_name, CAST(date_of_birth AS text) AS date_of_birth,
+       identity_ref, email, monthly_income, monthly_obligations, employment_months,
+       CAST(manifest AS text) AS manifest, stage, stage_reason, verification_round,
+       CAST(EXTRACT(EPOCH FROM created_at) AS bigint) AS created_epoch,
+       CAST(EXTRACT(EPOCH FROM updated_at) AS bigint) AS updated_epoch
+FROM applications
+WHERE application_id = :applicationId]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set app" variableName="app" />
+		<choice doc:name="Choice">
+			<when expression="#[isEmpty(vars.app)]">
+				<set-variable value="NOT_FOUND" doc:name="Set appError" variableName="appError" />
+				<set-variable value="Application not found" doc:name="Set appErrorMessage" variableName="appErrorMessage" />
+				<flow-ref doc:name="sf-raise-app-error" name="sf-raise-app-error" />
+			</when>
+		</choice>
+		<db:select doc:name="Get documents" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT doc_type, file_name, status, reason, size_bytes, sha256, source_path, stored_path
+FROM application_documents
+WHERE application_id = :applicationId
+ORDER BY id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set docs" variableName="docs" />
+		<db:select doc:name="Get decision" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT decision, score, scorecard_version, deciding_rule, array_to_string(reason_codes, ',') AS reason_codes,
+       requested_amount, approved_amount, approved_tenure, approved_rate_pct, instalment,
+       affordability_ratio, reduction_reason,
+       CAST(EXTRACT(EPOCH FROM offer_expires_at) AS bigint) AS offer_expires_epoch,
+       CAST(EXTRACT(EPOCH FROM decided_at) AS bigint) AS decided_epoch
+FROM credit_decisions
+WHERE application_id = :applicationId]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set decision" variableName="decision" />
+		<db:select doc:name="Get rule hits" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT rule_code, rule_type, input_value, weight, points, contribution, triggered
+FROM decision_rule_hits
+WHERE application_id = :applicationId
+ORDER BY id]]></db:sql>
+			<db:input-parameters><![CDATA[#[{applicationId: vars.applicationId}]]]></db:input-parameters>
+		</db:select>
+		<set-variable value="#[payload]" doc:name="Set hits" variableName="hits" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/application-response.dwl" />
+			</ee:message>
+		</ee:transform>
+	</flow>
 </mule>
-

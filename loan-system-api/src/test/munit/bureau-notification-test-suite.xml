@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="bureau-notification-test-suite.xml" />
+	<munit:test name="bureau-report-returns-history" description="Enabled bureau and known applicant return the report">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau flag" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{flag_value: 'true'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau history" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{identity_ref: 'RSTUV3456W', bureau_score: 790, missed_payments_24m: 0, active_default: true}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {identityRef: 'RSTUV3456W'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\bureau\reports\(identityRef):loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.bureauScore]" is="#[MunitTools::equalTo(790)]" />
+			<munit-tools:assert-that expression="#[payload.activeDefault]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="bureau-report-switched-off-is-unavailable" description="Switch off is a 503 for the caller to treat as DATA_UNAVAILABLE" expectedErrorType="APP:UNAVAILABLE">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau flag" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{flag_value: 'false'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {identityRef: 'ABCDE1234F'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\bureau\reports\(identityRef):loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="bureau-report-unknown-applicant-is-not-found" description="No history is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau flag" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{flag_value: 'true'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau history" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:attributes value="#[{uriParams: {identityRef: 'ZZZZZ9999Z'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\bureau\reports\(identityRef):loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="bureau-switch-can-be-read" description="Switch state is returned as a boolean">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get bureau flag" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{flag_value: 'false'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\bureau\switch:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.enabled]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="bureau-switch-can-be-turned-off" description="Putting enabled=false stores false and returns it">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Set bureau flag" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{flag_value: 'false'}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;enabled&quot;:false}']" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="put:\bureau\switch:application\json:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.enabled]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="notification-ensure-creates-row" description="First request creates the row and returns 201">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{inserted: 1, found: 1}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 1, application_id: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0, last_error: null}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;applicationId&quot;:&quot;APP-2026-000001&quot;,&quot;template&quot;:&quot;APPROVED&quot;,&quot;round&quot;:1}']" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\notifications:application\json:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('201')]" />
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('PENDING')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="notification-ensure-existing-row-returns-200" description="A second request returns the existing row with the default 200">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{inserted: 0, found: 1}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 1, application_id: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'SENT', attempts: 1, last_error: null}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;applicationId&quot;:&quot;APP-2026-000001&quot;,&quot;template&quot;:&quot;APPROVED&quot;,&quot;round&quot;:1}']" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\notifications:application\json:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('SENT')]" />
+			<munit-tools:assert-that expression="#[vars.httpStatus default 200 as String]" is="#[MunitTools::equalTo('200')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="notification-ensure-unknown-application-is-not-found" description="Unknown application is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{inserted: 0, found: 0}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;applicationId&quot;:&quot;APP-NOPE&quot;,&quot;template&quot;:&quot;APPROVED&quot;,&quot;round&quot;:1}']" mediaType="application/json" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="post:\notifications:application\json:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="notification-update-marks-sent" description="Update returns the changed row">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Update notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 7, application_id: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'SENT', attempts: 1, last_error: null}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;status&quot;:&quot;SENT&quot;}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {notificationId: '7'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="put:\notifications\(notificationId):application\json:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.id]" is="#[MunitTools::equalTo(7)]" />
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('SENT')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="notification-update-unknown-id-is-not-found" description="No row updated is a 404" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Update notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;status&quot;:&quot;SENT&quot;}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {notificationId: '999'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="put:\notifications\(notificationId):application\json:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="notification-update-rejects-non-numeric-id" description="A non-numeric id is rejected before any SQL" expectedErrorType="VALIDATION:MISMATCH">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;status&quot;:&quot;SENT&quot;}']" mediaType="application/json" />
+				<munit:attributes value="#[{uriParams: {notificationId: 'abc'}}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="put:\notifications\(notificationId):application\json:loan-system-api-config" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="notifications-list-shows-age" description="Unnotified rows come back with their age">
+		<munit:behavior>
+			<munit-tools:mock-when processor="db:select">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get notifications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 3, application_id: 'APP-2026-000001', template: 'DECLINED', round: 1, status: 'RETRYING', attempts: 2, last_error: 'smtp down', created_epoch: 1762300000}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="get:\notifications:loan-system-api-config" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload[0].status]" is="#[MunitTools::equalTo('RETRYING')]" />
+			<munit-tools:assert-that expression="#[payload[0].ageSeconds &gt; 0]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+</mule>

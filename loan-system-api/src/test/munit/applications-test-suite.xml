@@ -27,7 +27,7 @@
         <munit:behavior>
             <munit-tools:mock-when processor="db:select">
                 <munit-tools:with-attributes>
-                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application, outbox and audit"/>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application"/>
                 </munit-tools:with-attributes>
                 <munit-tools:then-return>
                     <munit-tools:payload value="#[[{application_id: 'APP-2026-000001'}]]"/>
@@ -53,7 +53,7 @@
         <munit:behavior>
             <munit-tools:mock-when processor="db:select">
                 <munit-tools:with-attributes>
-                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application, outbox and audit"/>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application"/>
                 </munit-tools:with-attributes>
                 <munit-tools:then-return>
                     <munit-tools:payload value="#[[]]"/>
@@ -61,7 +61,7 @@
             </munit-tools:mock-when>
             <munit-tools:mock-when processor="db:select">
                 <munit-tools:with-attributes>
-                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Find application by request id"/>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Find application"/>
                 </munit-tools:with-attributes>
                 <munit-tools:then-return>
                     <munit-tools:payload value="#[[{application_id: 'APP-2026-000007', payload_hash: 'hash-1', stage: 'VERIFYING'}]]"/>
@@ -88,7 +88,7 @@
         <munit:behavior>
             <munit-tools:mock-when processor="db:select">
                 <munit-tools:with-attributes>
-                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application, outbox and audit"/>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert application"/>
                 </munit-tools:with-attributes>
                 <munit-tools:then-return>
                     <munit-tools:payload value="#[[]]"/>
@@ -96,7 +96,7 @@
             </munit-tools:mock-when>
             <munit-tools:mock-when processor="db:select">
                 <munit-tools:with-attributes>
-                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Find application by request id"/>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Find application"/>
                 </munit-tools:with-attributes>
                 <munit-tools:then-return>
                     <munit-tools:payload value="#[[{application_id: 'APP-2026-000007', payload_hash: 'OTHER-HASH', stage: 'VERIFYING'}]]"/>

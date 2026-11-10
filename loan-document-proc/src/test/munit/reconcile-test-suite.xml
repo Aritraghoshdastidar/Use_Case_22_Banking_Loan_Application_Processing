@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="reconcile-test-suite.xml" />
+	<munit:before-test name="set-application-variables">
+		<set-variable value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" doc:name="Set app" variableName="app" />
+		<set-variable value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" doc:name="Set rules" variableName="rules" />
+		<set-variable value="#[{applicationId: 'APP-2026-000001'}]" doc:name="Set envelope" variableName="envelope" />
+	</munit:before-test>
+	<munit:test name="complete-folder-has-nothing-missing" description="Every required document present: nothing missing, nothing unexpected">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reconciliation.folderFound]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.present)]" is="#[MunitTools::equalTo(4)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.missingTypes)]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.missingFiles)]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.unexpected)]" is="#[MunitTools::equalTo(0)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="missing-payslip-names-type-required-and-found" description="One payslip where two are required is reported with both counts">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.missingTypes)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.missingTypes[0].docType]" is="#[MunitTools::equalTo('PAYSLIP')]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.missingTypes[0].required]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.missingTypes[0].found]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.missingFiles[0].fileName]" is="#[MunitTools::equalTo('payslip_2.pdf')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="extra-files-are-unexpected-and-do-not-block" description="Files outside the manifest are unexpected and nothing is reported missing because of them">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}, {key: 'staging/f/holiday.png', size: 218}, {key: 'staging/f/notes.txt', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.unexpected)]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.missingTypes)]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.present)]" is="#[MunitTools::equalTo(4)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-in-a-sub-folder-is-unexpected" description="A key below the applicant folder is not treated as a document">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/archive/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.unexpected)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.missingTypes[0].found]" is="#[MunitTools::equalTo(1)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="no-objects-means-folder-not-found" description="A prefix with no object at all is an absent folder">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reconciliation.folderFound]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.missingTypes)]" is="#[MunitTools::equalTo(3)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="marker-only-folder-is-empty-not-absent" description="A folder that only has its marker object exists and reports every type missing">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/', size: 0}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reconciliation.folderFound]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.missingTypes)]" is="#[MunitTools::equalTo(3)]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.missingTypes[2].required]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.missingTypes[2].found]" is="#[MunitTools::equalTo(0)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="manifest-type-outside-the-checklist-is-unexpected" description="A manifest entry whose type is not on the product checklist is not counted">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}, {key: 'staging/f/bonus.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'f', documentCount: 5, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}, {fileName: 'bonus.pdf', 'type': 'BONUS_LETTER'}]}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(vars.reconciliation.unexpected)]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[vars.reconciliation.unexpected[0].fileName]" is="#[MunitTools::equalTo('bonus.pdf')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unsafe-folder-is-never-listed-parent-folder-escape" description="A folder that escapes the staging root is treated as absent and the store is not called">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: '../secret', documents: []}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reconciliation.folderFound]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:verify-call processor="s3:list-objects" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unsafe-folder-is-never-listed-absolute-folder" description="A folder that escapes the staging root is treated as absent and the store is not called">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: '/etc', documents: []}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reconciliation.folderFound]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:verify-call processor="s3:list-objects" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unsafe-folder-is-never-listed-backslash-folder" description="A folder that escapes the staging root is treated as absent and the store is not called">
+		<munit:behavior>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', manifest: {folder: 'a\\b', documents: []}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-reconcile-folder" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reconciliation.folderFound]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:verify-call processor="s3:list-objects" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+</mule>

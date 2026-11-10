@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="outbox-dedupe-audit-test-suite.xml"/>
+
+    <!-- ===================== outbox ===================== -->
+    <munit:test name="outbox-pending-lists-messages" description="Pending rows become messageId, queue, parsed payload">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get pending outbox"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{id: '11111111-1111-4111-8111-111111111111', queue_name: 'loan.verify.q', payload: '{&quot;type&quot;:&quot;VERIFY_REQUESTED&quot;}', attempts: 0}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{queryParams: {limit: '10'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\outbox\pending:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[sizeOf(payload)]" is="#[MunitTools::equalTo(1)]"/>
+            <munit-tools:assert-that expression="#[payload[0].queue]" is="#[MunitTools::equalTo('loan.verify.q')]"/>
+            <munit-tools:assert-that expression="#[payload[0].payload.'type']" is="#[MunitTools::equalTo('VERIFY_REQUESTED')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="outbox-mark-sent-returns-204" description="Marking a known message sent returns 204 with no body">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Mark sent"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 1}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {messageId: '11111111-1111-4111-8111-111111111111'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\outbox\(messageId)\sent:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('204')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="outbox-mark-sent-unknown-message-is-not-found" description="Unknown message id is a 404" expectedErrorType="APP:NOT_FOUND">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Mark sent"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 0}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {messageId: '11111111-1111-4111-8111-111111111111'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\outbox\(messageId)\sent:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="outbox-mark-sent-rejects-malformed-id" description="A non-UUID id is rejected before any SQL runs" expectedErrorType="VALIDATION:MISMATCH">
+        <munit:behavior>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {messageId: 'not-a-uuid'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\outbox\(messageId)\sent:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="outbox-mark-failed-returns-204" description="Recording a failed publish returns 204">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Mark failed"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{found: 1}]]" mediaType="application/java"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#['{&quot;error&quot;:&quot;broker unavailable&quot;}']" mediaType="application/json"/>
+                <munit:attributes value="#[{uriParams: {messageId: '11111111-1111-4111-8111-111111111111'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\outbox\(messageId)\failed:application\json:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('204')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- ===================== processed messages ===================== -->
+    <munit:test name="claim-first-delivery-succeeds" description="First claim returns 201">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Claim message"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{consumer: 'loan-document-proc'}]]" mediaType="application/java"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#['{&quot;consumer&quot;:&quot;loan-document-proc&quot;,&quot;messageId&quot;:&quot;11111111-1111-4111-8111-111111111111&quot;}']" mediaType="application/json"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\processed-messages:application\json:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('201')]"/>
+            <munit-tools:assert-that expression="#[payload.claimed]" is="#[MunitTools::equalTo(true)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="claim-redelivery-conflicts" description="Second claim of the same message is a 409" expectedErrorType="APP:CONFLICT">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Claim message"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#[{consumer: 'loan-document-proc', messageId: '11111111-1111-4111-8111-111111111111'}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\processed-messages:application\json:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="release-claim-returns-204" description="Releasing a claim returns 204">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Release message"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {consumer: 'loan-document-proc', messageId: '11111111-1111-4111-8111-111111111111'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="delete:\processed-messages\(consumer)\(messageId):loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('204')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- ===================== audit ===================== -->
+    <munit:test name="audit-event-append-succeeds" description="Appending an event for a known application returns 201 and its id">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert audit event"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{id: 42}]]" mediaType="application/java"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#['{&quot;applicationId&quot;:&quot;APP-2026-000001&quot;,&quot;correlationId&quot;:&quot;22222222-2222-4222-8222-222222222222&quot;,&quot;event&quot;:&quot;NOTIFIED&quot;,&quot;sourceApp&quot;:&quot;loan-notification-proc&quot;,&quot;detail&quot;:{&quot;template&quot;:&quot;DOCUMENTS_MISSING&quot;}}']" mediaType="application/json"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\audit\events:application\json:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.httpStatus as String]" is="#[MunitTools::equalTo('201')]"/>
+            <munit-tools:assert-that expression="#[payload.id]" is="#[MunitTools::equalTo(42)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="audit-event-unknown-application-is-not-found" description="No matching application is a 404" expectedErrorType="APP:NOT_FOUND">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Insert audit event"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:payload value="#[{applicationId: 'APP-NOPE', correlationId: '22222222-2222-4222-8222-222222222222', event: 'NOTIFIED', sourceApp: 'x'}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="post:\audit\events:application\json:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+
+    <munit:test name="audit-trail-returns-events-in-order" description="Trail comes back with parsed detail">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Check application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[{application_id: 'APP-2026-000001'}]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[
+                        {id: 1, event: 'RECEIVED', from_stage: null, to_stage: 'RECEIVED', source_app: 'loan-system-api', correlation_id: 'c1', detail: '{}'},
+                        {id: 2, event: 'VERIFYING', from_stage: 'RECEIVED', to_stage: 'VERIFYING', source_app: 'loan-document-proc', correlation_id: 'c1', detail: '{}'}
+                    ]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-2026-000001'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\applications\(applicationId)\audit:loan-system-api-config"/>
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.applicationId]" is="#[MunitTools::equalTo('APP-2026-000001')]"/>
+            <munit-tools:assert-that expression="#[sizeOf(payload.events)]" is="#[MunitTools::equalTo(2)]"/>
+            <munit-tools:assert-that expression="#[payload.events[1].toStage]" is="#[MunitTools::equalTo('VERIFYING')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <munit:test name="audit-trail-unknown-application-is-not-found" description="Unknown application is a 404" expectedErrorType="APP:NOT_FOUND">
+        <munit:behavior>
+            <munit-tools:mock-when processor="db:select">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Check application"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[[]]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit:set-event>
+                <munit:attributes value="#[{uriParams: {applicationId: 'APP-NOPE'}}]"/>
+            </munit:set-event>
+        </munit:behavior>
+        <munit:execution>
+            <flow-ref name="get:\applications\(applicationId)\audit:loan-system-api-config"/>
+        </munit:execution>
+    </munit:test>
+</mule>
