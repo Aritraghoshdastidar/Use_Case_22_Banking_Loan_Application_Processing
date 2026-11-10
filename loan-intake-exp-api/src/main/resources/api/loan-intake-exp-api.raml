@@ -1,0 +1,159 @@
+#%RAML 1.0
+title: Loan Intake API
+version: v1
+description: |
+  Public experience API for loan applications. It validates the request, records the application through the
+  system API and answers 202 with a status URL. It never reads documents and never scores.
+baseUri: http://localhost:8702/api
+mediaType: application/json
+protocols: [HTTP, HTTPS]
+
+types:
+  ValidationIssue:
+    properties:
+      field: string
+      message: string
+  Error:
+    properties:
+      code: string
+      message: string
+      correlationId?: string
+      details?:
+        properties:
+          errors: ValidationIssue[]
+  DocumentItem:
+    properties:
+      fileName: string
+      type: string
+      sha256?: string
+  ApplicationRequest:
+    properties:
+      requestId:
+        type: string
+        description: Client-supplied id used as the idempotency key. Max 80 characters.
+      productCode: string
+      amount: number
+      tenureMonths: integer
+      applicant:
+        properties:
+          fullName: string
+          dateOfBirth:
+            type: date-only
+          identityRef:
+            type: string
+            description: Five letters, four digits, one letter.
+          email: string
+          monthlyIncome: number
+          monthlyObligations?: number
+          employmentMonths?: integer
+      documents:
+        properties:
+          folder:
+            type: string
+            description: Name of the applicant's folder in the upload area. Must be a simple name, never a path.
+          documentCount: integer
+          documents?: DocumentItem[]
+  Accepted:
+    properties:
+      applicationId: string
+      statusUrl: string
+  DocumentStatus:
+    properties:
+      docType?: string
+      fileName: string
+      status: string
+      reason?: string
+  Status:
+    properties:
+      applicationId: string
+      stage: string
+      reason?: string
+      documents: DocumentStatus[]
+      decision?:
+        properties:
+          decision: string
+          reasonCodes: string[]
+          approvedAmount?: number
+          approvedTenure?: integer
+          approvedRatePct?: number
+          instalment?: number
+          reductionReason?: string
+          offerExpiresAt?: datetime
+
+/applications:
+  post:
+    description: |
+      Records a loan application. The same requestId with the same payload returns the original applicationId;
+      the same requestId with a different payload is a 409.
+    body:
+      type: ApplicationRequest
+      example:
+        requestId: REQ-2026-0001
+        productCode: PL
+        amount: 200000
+        tenureMonths: 24
+        applicant:
+          fullName: Asha Verma
+          dateOfBirth: 1990-05-15
+          identityRef: ABCDE1234F
+          email: asha.verma@example.com
+          monthlyIncome: 90000
+          monthlyObligations: 10000
+          employmentMonths: 48
+        documents:
+          folder: complete-ok
+          documentCount: 4
+          documents:
+            - { fileName: id_proof.pdf, type: ID_PROOF }
+            - { fileName: address_proof.pdf, type: ADDRESS_PROOF }
+            - { fileName: payslip_1.pdf, type: PAYSLIP }
+            - { fileName: payslip_2.pdf, type: PAYSLIP }
+    responses:
+      202:
+        headers:
+          Location:
+            type: string
+            description: The status URL
+        body:
+          type: Accepted
+      400:
+        description: A mandatory field is missing or malformed. Field-level errors are listed.
+        body:
+          type: Error
+      409:
+        description: The requestId was already used with a different payload.
+        body:
+          type: Error
+      422:
+        description: Unknown product, or amount, tenure or applicant age outside the product limits.
+        body:
+          type: Error
+      503:
+        description: A dependency is down. Nothing was recorded, so it is safe to retry.
+        body:
+          type: Error
+  /{applicationId}:
+    /status:
+      get:
+        description: Current stage, document inventory and the decision with its reasons once available.
+        responses:
+          200:
+            body:
+              type: Status
+          404:
+            body:
+              type: Error
+    /resubmit:
+      post:
+        description: Restarts verification after the applicant has added the missing documents.
+        responses:
+          202:
+            body:
+              type: Accepted
+          404:
+            body:
+              type: Error
+          409:
+            description: Resubmission is only allowed while documents are incomplete.
+            body:
+              type: Error

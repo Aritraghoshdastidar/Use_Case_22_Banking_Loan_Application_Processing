@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+      xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd">
+    <!-- Ties this app to its API Manager instance so the policies apply. Loaded only on CloudHub. Kept in src/main/resources because Mule loads every file in src/main/mule on its own. -->
+    <api-gateway:autodiscovery apiId="${api.id}" flowRef="loan-system-api-main-flow" ignoreBasePath="true" doc:name="API Autodiscovery" />
+</mule>

@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:s3="http://www.mulesoft.org/schema/mule/s3" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<!-- Validation of every document that is present and expected. Files already accepted in an earlier round
+	     are reused (resubmission), the rest are checked in parallel, three at a time. -->
+	<sub-flow name="sf-validate-files">
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/split-present.dwl" />
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[output application/java --- payload.reused]" doc:name="Set reused" variableName="reused" />
+		<set-variable value="#[output application/java --- payload.toValidate]" doc:name="Set toValidate" variableName="toValidate" />
+		<set-variable value="#[output application/java --- []]" doc:name="Set fresh" variableName="fresh" />
+		<choice doc:name="Choice">
+			<when expression="#[!isEmpty(vars.toValidate)]">
+				<parallel-foreach doc:name="Parallel For Each" collection="#[vars.toValidate]" maxConcurrency="3">
+					<flow-ref doc:name="sf-validate-file" name="sf-validate-file" />
+				</parallel-foreach>
+				<set-variable value="#[output application/java --- payload map ((branch) -> branch.payload)]" doc:name="Set fresh" variableName="fresh" />
+			</when>
+		</choice>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/collect-validation.dwl" />
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[payload]" doc:name="Set validation" variableName="validation" />
+		<logger level="INFO" doc:name="Logger" category="com.loan.document.verify" message="#['validated applicationId=' ++ vars.app.applicationId ++ ' accepted=' ++ (sizeOf(vars.validation.accepted) as String) ++ ' quarantined=' ++ (sizeOf(vars.validation.quarantined) as String) ++ ' duplicates=' ++ (sizeOf(vars.validation.duplicates) as String) ++ ' reused=' ++ (sizeOf(vars.reused) as String)]" />
+	</sub-flow>
+	<!-- One document. The cheap checks come first so a bad file is rejected before anything is read:
+	     extension, then size from the object metadata, then the first and last bytes, and only a good
+	     file is read through to compute its SHA-256. -->
+	<sub-flow name="sf-validate-file">
+		<set-variable value="#[output application/java --- payload]" doc:name="Set file" variableName="file" />
+		<set-variable value="#[output application/java --- (vars.rules.rules filter ((r) -> r.docType == vars.file.docType))[0]]" doc:name="Set rule" variableName="rule" />
+		<set-variable value="#[null]" doc:name="Set reason" variableName="reason" />
+		<set-variable value="#[null]" doc:name="Set sha256" variableName="sha256" />
+		<set-variable value="#[vars.file.size]" doc:name="Set actualSize" variableName="actualSize" />
+		<flow-ref doc:name="sf-check-stable" name="sf-check-stable" />
+		<flow-ref doc:name="sf-check-extension" name="sf-check-extension" />
+		<choice doc:name="Choice">
+			<when expression="#[vars.reason == null]">
+				<flow-ref doc:name="sf-check-size" name="sf-check-size" />
+			</when>
+		</choice>
+		<choice doc:name="Choice">
+			<when expression="#[vars.reason == null]">
+				<flow-ref doc:name="sf-check-content" name="sf-check-content" />
+			</when>
+		</choice>
+		<choice doc:name="Choice">
+			<when expression="#[vars.reason == null]">
+				<flow-ref doc:name="sf-hash-file" name="sf-hash-file" />
+			</when>
+		</choice>
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/file-result.dwl" />
+			</ee:message>
+		</ee:transform>
+	</sub-flow>
+	<!-- A file is only verified once its size has stopped changing: it must be older than
+	     store.stableSeconds and its size must match the snapshot taken the last time it was seen.
+	     An unstable file raises a temporary error, so the consumer retries after 2, 4 and 8 seconds. -->
+	<sub-flow name="sf-check-stable">
+		<os:retrieve doc:name="Retrieve size snapshot" key="#[vars.file.key]" objectStore="File_Snapshot_Store">
+			<os:default-value><![CDATA[#[-1]]]></os:default-value>
+		</os:retrieve>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set snapshot" variableName="snapshot" />
+		<set-variable value="#[output application/java --- (now() as Number {unit: 'seconds'}) - ((vars.file.lastModified ++ 'Z') as DateTime as Number {unit: 'seconds'})]" doc:name="Set ageSeconds" variableName="ageSeconds" />
+		<set-variable value="#[output application/java --- (vars.ageSeconds >= (p('store.stableSeconds') as Number)) and (vars.snapshot == -1 or vars.snapshot == vars.file.size)]" doc:name="Set stable" variableName="stable" />
+		<os:store doc:name="Store size snapshot" key="#[vars.file.key]" objectStore="File_Snapshot_Store">
+			<os:value><![CDATA[#[vars.file.size]]]></os:value>
+		</os:store>
+		<choice doc:name="Choice">
+			<when expression="#[vars.stable == false]">
+				<raise-error doc:name="Raise error" type="APP:UNSTABLE_FILE" description="#['File is still being uploaded: ' ++ vars.file.fileName]" />
+			</when>
+		</choice>
+	</sub-flow>
+	<sub-flow name="sf-check-extension">
+		<set-variable value="#[output application/java --- if (vars.rule.allowedExtensions contains lower((vars.file.fileName splitBy '.')[-1])) null else 'UNSUPPORTED_TYPE']" doc:name="Set reason" variableName="reason" />
+	</sub-flow>
+	<!-- Size comes from the object metadata, never from reading the body -->
+	<sub-flow name="sf-check-size">
+		<s3:head-object doc:name="Get file metadata" config-ref="S3_Config" bucketName="${store.bucket}" key="#[vars.file.key]" />
+		<set-variable value="#[output application/java --- payload.contentLength]" doc:name="Set actualSize" variableName="actualSize" />
+		<set-variable value="#[output application/java --- if (vars.actualSize &gt; vars.rule.maxSizeBytes) 'FILE_TOO_LARGE' else if (vars.actualSize == 0) 'EMPTY_OR_UNREADABLE' else null]" doc:name="Set reason" variableName="reason" />
+	</sub-flow>
+	<!-- Content type comes from the first bytes, not the name. The last bytes show a file that was cut short. -->
+	<sub-flow name="sf-check-content">
+		<try doc:name="Try">
+			<s3:get-object doc:name="Read first block" config-ref="S3_Config" bucketName="${store.bucket}" key="#[vars.file.key]" range="bytes=0-15" />
+			<set-variable value="#[output application/java --- lower(dw::core::Binaries::toHex(payload as Binary))]" doc:name="Set headHex" variableName="headHex" />
+			<s3:get-object doc:name="Read last block" config-ref="S3_Config" bucketName="${store.bucket}" key="#[vars.file.key]" range="bytes=-1024" />
+			<set-variable value="#[output application/java --- lower(dw::core::Binaries::toHex(payload as Binary))]" doc:name="Set tailHex" variableName="tailHex" />
+			<ee:transform doc:name="Transform Message">
+				<ee:message>
+					<ee:set-payload resource="dwl/content-check.dwl" />
+				</ee:message>
+			</ee:transform>
+			<set-variable value="#[output application/java --- payload]" doc:name="Set reason" variableName="reason" />
+			<error-handler>
+				<on-error-continue enableNotifications="false" logException="false" doc:name="On Error Continue" type="S3:NO_SUCH_KEY">
+					<set-variable value="EMPTY_OR_UNREADABLE" doc:name="Set reason" variableName="reason" />
+				</on-error-continue>
+			</error-handler>
+		</try>
+	</sub-flow>
+	<sub-flow name="sf-hash-file">
+		<s3:get-object doc:name="Read file" config-ref="S3_Config" bucketName="${store.bucket}" key="#[vars.file.key]" />
+		<set-variable value="#[output application/java --- lower(dw::core::Binaries::toHex(dw::Crypto::hashWith(payload as Binary, 'SHA-256')))]" doc:name="Set sha256" variableName="sha256" />
+	</sub-flow>
+	<!-- Quarantine: the file is copied first, the inventory is saved, and only then is the staging copy
+	     removed, so a failure part-way leaves the file in staging and the whole step simply runs again. -->
+	<sub-flow name="sf-store-results">
+		<foreach doc:name="For Each" collection="#[vars.validation.quarantined]">
+			<s3:copy-object doc:name="Copy to quarantine" config-ref="S3_Config" sourceBucketName="${store.bucket}" sourceKey="#[payload.key]" destinationBucketName="${store.bucket}" destinationKey="#[p('store.quarantinePrefix') ++ vars.app.applicationId ++ '/' ++ payload.fileName]" />
+		</foreach>
+		<choice doc:name="Choice">
+			<when expression="#[!isEmpty(vars.validation.results)]">
+				<ee:transform doc:name="Transform Message">
+					<ee:message>
+						<ee:set-payload resource="dwl/inventory-body.dwl" />
+					</ee:message>
+				</ee:transform>
+				<http:request method="PUT" doc:name="Save inventory" config-ref="System_API_Request_config" path="/applications/{applicationId}/documents">
+					<http:uri-params><![CDATA[#[{applicationId: vars.app.applicationId}]]]></http:uri-params>
+				</http:request>
+			</when>
+		</choice>
+		<foreach doc:name="For Each" collection="#[vars.validation.quarantined]">
+			<s3:delete-object doc:name="Remove from staging" config-ref="S3_Config" bucketName="${store.bucket}" key="#[payload.key]" />
+		</foreach>
+	</sub-flow>
+</mule>

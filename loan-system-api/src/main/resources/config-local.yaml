@@ -11,7 +11,9 @@ db:
   port: "5432"
   name: "loan"
   user: "loan"
+  urlParams: ""
   maxPoolSize: "5"
   minPoolSize: "1"
+  maxWaitSeconds: "10"
 cache:
   productTtlSeconds: "60"

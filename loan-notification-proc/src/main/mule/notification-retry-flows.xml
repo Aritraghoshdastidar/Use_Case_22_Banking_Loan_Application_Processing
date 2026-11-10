@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<!-- Notifications whose email failed are tried again here, not by re-running the decision.
+	     A row is due once it has waited base x (2^attempts - 1) seconds, so the gaps grow; after
+	     notify.maxAttempts failures it becomes FAILED and an alert is logged. -->
+	<flow name="notification-retry-flow" maxConcurrency="1">
+		<scheduler doc:name="Scheduler">
+			<scheduling-strategy>
+				<fixed-frequency frequency="${notify.retryFrequencyMillis}" startDelay="15000" />
+			</scheduling-strategy>
+		</scheduler>
+		<flow-ref doc:name="sf-retry-due" name="sf-retry-due" />
+	</flow>
+	<sub-flow name="sf-retry-due">
+		<http:request method="GET" doc:name="Get unsent notifications" config-ref="System_API_Request_config" path="/notifications" />
+		<ee:transform doc:name="Transform Message">
+			<ee:message>
+				<ee:set-payload resource="dwl/due-notifications.dwl" />
+			</ee:message>
+		</ee:transform>
+		<foreach doc:name="For Each" collection="#[payload]">
+			<try doc:name="Try">
+				<flow-ref doc:name="sf-retry-one" name="sf-retry-one" />
+				<error-handler>
+					<on-error-continue enableNotifications="false" logException="false" doc:name="On Error Continue">
+						<logger level="WARN" doc:name="Logger" category="com.loan.notification.notify" message="#['retry failed for notification ' ++ ((vars.notification.id default 'unknown') as String) ++ ' error=' ++ (error.errorType.identifier default '')]" />
+					</on-error-continue>
+				</error-handler>
+			</try>
+		</foreach>
+	</sub-flow>
+	<sub-flow name="sf-retry-one">
+		<set-variable value="#[output application/java --- payload]" doc:name="Set notification" variableName="notification" />
+		<set-variable value="#[vars.notification.template]" doc:name="Set template" variableName="template" />
+		<set-variable value="#[vars.notification.round]" doc:name="Set round" variableName="round" />
+		<http:request method="GET" doc:name="Get application" config-ref="System_API_Request_config" path="/applications/{applicationId}">
+			<http:uri-params><![CDATA[#[{applicationId: vars.notification.applicationId}]]]></http:uri-params>
+		</http:request>
+		<set-variable value="#[output application/java --- payload]" doc:name="Set app" variableName="app" />
+		<flow-ref doc:name="sf-notify" name="sf-notify" />
+	</sub-flow>
+</mule>

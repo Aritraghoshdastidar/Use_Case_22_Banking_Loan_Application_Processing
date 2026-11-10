@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="app-error-test-suite.xml" />
+	<munit:test name="app-error-not-found-raises-not-found" description="The shared raiser turns NOT_FOUND into APP:NOT_FOUND" expectedErrorType="APP:NOT_FOUND">
+		<munit:behavior>
+			<set-variable value="NOT_FOUND" variableName="appError" />
+			<set-variable value="test message" variableName="appErrorMessage" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-raise-app-error" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="app-error-conflict-raises-conflict" description="The shared raiser turns CONFLICT into APP:CONFLICT" expectedErrorType="APP:CONFLICT">
+		<munit:behavior>
+			<set-variable value="CONFLICT" variableName="appError" />
+			<set-variable value="test message" variableName="appErrorMessage" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-raise-app-error" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="app-error-unprocessable-raises-unprocessable" description="The shared raiser turns UNPROCESSABLE into APP:UNPROCESSABLE" expectedErrorType="APP:UNPROCESSABLE">
+		<munit:behavior>
+			<set-variable value="UNPROCESSABLE" variableName="appError" />
+			<set-variable value="test message" variableName="appErrorMessage" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-raise-app-error" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="app-error-unavailable-raises-unavailable" description="The shared raiser turns UNAVAILABLE into APP:UNAVAILABLE" expectedErrorType="APP:UNAVAILABLE">
+		<munit:behavior>
+			<set-variable value="UNAVAILABLE" variableName="appError" />
+			<set-variable value="test message" variableName="appErrorMessage" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-raise-app-error" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="app-error-bad-request-raises-bad-request" description="The shared raiser turns BAD_REQUEST into APP:BAD_REQUEST" expectedErrorType="APP:BAD_REQUEST">
+		<munit:behavior>
+			<set-variable value="BAD_REQUEST" variableName="appError" />
+			<set-variable value="test message" variableName="appErrorMessage" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-raise-app-error" />
+		</munit:execution>
+	</munit:test>
+	<munit:test name="app-error-something-else-raises-bad-request" description="The shared raiser turns SOMETHING_ELSE into APP:BAD_REQUEST" expectedErrorType="APP:BAD_REQUEST">
+		<munit:behavior>
+			<set-variable value="SOMETHING_ELSE" variableName="appError" />
+			<set-variable value="test message" variableName="appErrorMessage" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-raise-app-error" />
+		</munit:execution>
+	</munit:test>
+</mule>

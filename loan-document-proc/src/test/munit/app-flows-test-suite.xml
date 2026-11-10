@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="app-flows-test-suite.xml" />
+	<munit:test name="health-endpoint-reports-up" description="The health flow answers UP with the app name">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="health-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('UP')]" />
+			<munit-tools:assert-that expression="#[payload.app]" is="#[MunitTools::equalTo('loan-document-proc')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="consumer-flow-hands-each-message-to-the-pattern" description="The listener flow keeps the delivery tag and raw body, names the queue and expected type, then runs the shared pattern">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-consume-message" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#['{&quot;messageId&quot;:&quot;44444444-4444-4444-8444-444444444444&quot;}']" mediaType="application/java" />
+				<munit:attributes value="#[{ackId: 7}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="verify-consumer-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-consume-message" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.ackId]" is="#[MunitTools::equalTo(7)]" />
+			<munit-tools:assert-that expression="#[vars.sourceQueue]" is="#[MunitTools::equalTo('loan.verify.q')]" />
+			<munit-tools:assert-that expression="#[vars.expectedType]" is="#[MunitTools::equalTo('VERIFY_REQUESTED')]" />
+			<munit-tools:assert-that expression="#[vars.consumerName]" is="#[MunitTools::equalTo('document-proc')]" />
+			<munit-tools:assert-that expression="#[vars.rawBody]" is="#[MunitTools::equalTo('{&quot;messageId&quot;:&quot;44444444-4444-4444-8444-444444444444&quot;}')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-claim-release-is-logged-not-fatal" description="If the claim cannot be released the dead-letter step still goes on; an operator is told how to release it by hand">
+		<munit:behavior>
+			<set-variable value="true" variableName="claimed" />
+			<set-variable value="document-proc" variableName="consumerName" />
+			<set-variable value="44444444-4444-4444-8444-444444444444" variableName="messageId" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-release-claim" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="claim-that-was-never-taken-is-not-released" description="No claim, nothing to release">
+		<munit:behavior>
+			<set-variable value="false" variableName="claimed" />
+			<set-variable value="document-proc" variableName="consumerName" />
+			<set-variable value="44444444-4444-4444-8444-444444444444" variableName="messageId" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-release-claim" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Release claim" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+</mule>

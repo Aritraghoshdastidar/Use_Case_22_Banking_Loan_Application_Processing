@@ -93,6 +93,11 @@ $withDocs = curl.exe -s "$u/applications/$id" | ConvertFrom-Json
 Check 'inventory has 3 files, no duplicates' @($withDocs.documents).Count 3
 Check 'quarantined file keeps its reason' (($withDocs.documents | Where-Object { $_.status -eq 'QUARANTINED' }).reason) 'FILE_TOO_LARGE'
 Check 'inventory for unknown application' (Code PUT '/applications/APP-NOPE/documents' $docs) 404
+# a burst of simultaneous saves must never use up the database connection pool (it once did: every later request then hung)
+$burst = 1..20 | ForEach-Object { Start-Job -ScriptBlock { param($url, $file) curl.exe -s -m 30 -o NUL -w "%{http_code}" -X PUT $url -H "Content-Type: application/json" --data-binary "@$file" } -ArgumentList "$u/applications/$id/documents", $docs }
+$codes = @($burst | Wait-Job -Timeout 90 | Receive-Job); $burst | Remove-Job -Force
+Check 'burst of 20 simultaneous inventory saves: every one is answered' (@($codes | Where-Object { $_ -in '200', '409' }).Count) 20
+Check 'burst of 20 simultaneous inventory saves: the app still answers afterwards' (curl.exe -s -m 10 -o NUL -w "%{http_code}" "$u/health") 200
 
 # ---- decision (the test application is moved to SCORING first, as the scoring app would)
 $toScoring = Body 'toscoring' ('{"toStage":"SCORING","sourceApp":"smoke","correlationId":"' + $corr + '"}')
@@ -131,7 +136,7 @@ Check 'turn bureau off' (Code PUT '/bureau/switch' (Body 'off' '{"enabled":false
 Check 'bureau report while off' (Code GET '/bureau/reports/ABCDE1234F') 503
 Check 'turn bureau on' (Code PUT '/bureau/switch' (Body 'on' '{"enabled":true}')) 200
 Check 'bureau report after switching on' (Code GET '/bureau/reports/ABCDE1234F') 200
-Check 'identity number is not in the request log' ((Select-String -Path 'C:\Users\aritr\AnypointCodeBuilder\runtime\mule-enterprise-standalone-4.12.3\logs\loan-system-api.log' -Pattern 'ABCDE1234F' -Quiet)) $false
+Check 'identity number is not in the request log' ((Select-String -Path (Join-Path $env:USERPROFILE 'tools\mule-local-runtime\logs\loan-system-api.log') -Pattern 'ABCDE1234F' -Quiet)) $false
 
 # ---- notifications
 $nreq = Body 'nreq' ('{"applicationId":"' + $id + '","template":"APPROVED","round":1}')
@@ -149,7 +154,8 @@ Check 'update unknown notification' (Code PUT '/notifications/999999' (Body 'n4'
 Check 'update notification, malformed id' (Code PUT '/notifications/abc' (Body 'n5' '{"status":"SENT"}')) 400
 
 # ---- application list
-$list = curl.exe -s "$u/applications?stage=APPROVED&limit=50" | ConvertFrom-Json
+# the list is oldest first and capped at 500, so ask for the largest page: a database that has seen many test runs holds more than 50 approved applications
+$list = curl.exe -s "$u/applications?stage=APPROVED&limit=500" | ConvertFrom-Json
 Check 'list by stage finds the application' @($list | Where-Object { $_.applicationId -eq $id }).Count 1
 Check 'list entry has an age' ((@($list | Where-Object { $_.applicationId -eq $id })[0].ageMinutes) -ge 0) $true
 

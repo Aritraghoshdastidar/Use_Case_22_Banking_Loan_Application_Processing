@@ -1,0 +1,1446 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="verify-flow-test-suite.xml" />
+	<munit:before-test name="set-application-variables">
+		<set-variable value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" doc:name="Set app" variableName="app" />
+		<set-variable value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" doc:name="Set rules" variableName="rules" />
+		<set-variable value="#[{applicationId: 'APP-2026-000001'}]" doc:name="Set envelope" variableName="envelope" />
+	</munit:before-test>
+	<munit:test name="received-application-starts-verification" description="An application still in RECEIVED is moved to VERIFYING first">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'RECEIVED', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="verifying-application-does-not-restart" description="A resubmitted application is already VERIFYING and is not moved again">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:list-objects" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="complete-folder-is-not-marked-incomplete" description="Nothing missing: the application stays in VERIFYING">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="missing-document-marks-incomplete-once" description="A missing payslip is a business outcome: stage change sent once with the reason">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: false, accepted: [], quarantined: [{fileName: 'p2.pdf', docType: 'PAYSLIP', reason: 'FILE_TOO_LARGE'}], duplicates: [], missingTypes: [{docType: 'PAYSLIP', required: 2, found: 1}], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.incompleteReason]" is="#[MunitTools::equalTo('MISSING_DOCUMENTS')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="absent-folder-marks-incomplete-with-folder-not-found" description="An absent folder gives FOLDER_NOT_FOUND, not a retry">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.incompleteReason]" is="#[MunitTools::equalTo('FOLDER_NOT_FOUND')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unexpected-files-are-saved-even-when-complete" description="Extra files are recorded as UNEXPECTED without blocking">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}, {key: 'staging/f/notes.txt', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="invalid-file-marks-incomplete-though-the-folder-is-complete" description="Every file is present but one failed validation: the application is incomplete">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: false, accepted: [], quarantined: [{fileName: 'p2.pdf', docType: 'PAYSLIP', reason: 'FILE_TOO_LARGE'}], duplicates: [], missingTypes: [{docType: 'PAYSLIP', required: 2, found: 1}], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.incompleteReason]" is="#[MunitTools::equalTo('MISSING_DOCUMENTS')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="absent-folder-skips-validation" description="With no folder there is nothing to validate or store">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="manifest-file-not-found-keeps-the-application-incomplete" description="A file named in the manifest that is not in the folder is reported even if the counts are satisfied">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.incompleteReason]" is="#[MunitTools::equalTo('MISSING_DOCUMENTS')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="agreeing-manifest-takes-custody" description="A complete set whose manifest agrees is moved to custody and not marked incomplete">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="declared-count-mismatch-stops-before-custody" description="A declared count that differs from the files found is MANIFEST_MISMATCH and nothing is moved (AC6)">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 5, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.incompleteReason]" is="#[MunitTools::equalTo('MANIFEST_MISMATCH')]" />
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="declared-checksum-mismatch-stops-before-custody" description="A declared checksum that differs from the computed digest is MANIFEST_MISMATCH and nothing is moved">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF', sha256: 'ff'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: true, accepted: [{fileName: 'id_proof.pdf', sha256: 'aa'}], quarantined: [], duplicates: [], missingTypes: [], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.incompleteReason]" is="#[MunitTools::equalTo('MANIFEST_MISMATCH')]" />
+			<munit-tools:assert-that expression="#[vars.manifestCheck.checksumMismatches[0].fileName]" is="#[MunitTools::equalTo('id_proof.pdf')]" />
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-validation-takes-no-custody" description="When a file failed validation the manifest is not even compared and nothing is moved">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFYING', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-validate-files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+					<munit-tools:variables>
+						<munit-tools:variable key="validation" value="#[{complete: false, accepted: [], quarantined: [{fileName: 'p2.pdf', docType: 'PAYSLIP', reason: 'FILE_TOO_LARGE'}], duplicates: [], missingTypes: [{docType: 'PAYSLIP', required: 2, found: 1}], results: []}]" />
+					</munit-tools:variables>
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-store-results" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.incompleteReason]" is="#[MunitTools::equalTo('MISSING_DOCUMENTS')]" />
+			<munit-tools:verify-call processor="mule:flow-ref" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-take-custody" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="late-message-is-skipped-in-stage-documents_incomplete" description="A VERIFY message for an application already past verification does nothing">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'DOCUMENTS_INCOMPLETE', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:list-objects" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="late-message-is-skipped-in-stage-verified" description="A VERIFY message for an application already past verification does nothing">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'VERIFIED', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:list-objects" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="late-message-is-skipped-in-stage-approved" description="A VERIFY message for an application already past verification does nothing">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', productCode: 'PL', stage: 'APPROVED', verificationRound: 1, correlationId: '22222222-2222-4222-8222-222222222222', manifest: {folder: 'f', documentCount: 4, documents: [{fileName: 'id_proof.pdf', 'type': 'ID_PROOF'}, {fileName: 'address_proof.pdf', 'type': 'ADDRESS_PROOF'}, {fileName: 'payslip_1.pdf', 'type': 'PAYSLIP'}, {fileName: 'payslip_2.pdf', 'type': 'PAYSLIP'}]}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{productCode: 'PL', rules: [{docType: 'ID_PROOF', requiredCount: 1}, {docType: 'ADDRESS_PROOF', requiredCount: 1}, {docType: 'PAYSLIP', requiredCount: 2}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'VERIFYING'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Save unexpected files" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{stage: 'DOCUMENTS_INCOMPLETE'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:list-objects">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{key: 'staging/f/id_proof.pdf', size: 218}, {key: 'staging/f/address_proof.pdf', size: 218}, {key: 'staging/f/payslip_1.pdf', size: 218}, {key: 'staging/f/payslip_2.pdf', size: 218}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-verify-documents" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="s3:list-objects" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="List folder" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Start verification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark incomplete" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="incomplete-stage-body-carries-the-missing-list-and-publishes" description="The stage change names what is missing and asks for a notification message">
+		<munit:behavior>
+			<set-variable value="MISSING_DOCUMENTS" variableName="incompleteReason" />
+			<set-variable value="#[{missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], unexpected: []}]" variableName="reconciliation" />
+			<set-variable value="#[{missingTypes: [{docType: 'PAYSLIP', required: 2, found: 1}], quarantined: [{fileName: 'p2.pdf', docType: 'PAYSLIP', reason: 'FILE_TOO_LARGE'}], duplicates: []}]" variableName="validation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/incomplete-stage.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.toStage]" is="#[MunitTools::equalTo('DOCUMENTS_INCOMPLETE')]" />
+			<munit-tools:assert-that expression="#[payload.expectedFromStage]" is="#[MunitTools::equalTo('VERIFYING')]" />
+			<munit-tools:assert-that expression="#[payload.detail.missing[0].required]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.detail.missing[0].found]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload.detail.quarantined[0].reason]" is="#[MunitTools::equalTo('FILE_TOO_LARGE')]" />
+			<munit-tools:assert-that expression="#[payload.publish.queue]" is="#[MunitTools::equalTo('loan.decision.q')]" />
+			<munit-tools:assert-that expression="#[payload.publish.&quot;type&quot;]" is="#[MunitTools::equalTo('DECISION_READY')]" />
+			<munit-tools:assert-that expression="#[payload.correlationId]" is="#[MunitTools::equalTo('22222222-2222-4222-8222-222222222222')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="start-verification-body-guards-the-stage" description="Starting verification only applies from RECEIVED">
+		<munit:behavior>
+			<set-variable value="none" variableName="unused" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/start-verification.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.toStage]" is="#[MunitTools::equalTo('VERIFYING')]" />
+			<munit-tools:assert-that expression="#[payload.expectedFromStage]" is="#[MunitTools::equalTo('RECEIVED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unexpected-inventory-body-marks-files-unexpected" description="Unexpected files are saved with their source path and size">
+		<munit:behavior>
+			<set-variable value="#[{unexpected: [{fileName: 'notes.txt', key: 'staging/f/notes.txt', size: 12}]}]" variableName="reconciliation" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/unexpected-inventory.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.documents[0].status]" is="#[MunitTools::equalTo('UNEXPECTED')]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].sourcePath]" is="#[MunitTools::equalTo('staging/f/notes.txt')]" />
+			<munit-tools:assert-that expression="#[payload.documents[0].sizeBytes]" is="#[MunitTools::equalTo(12)]" />
+		</munit:validation>
+	</munit:test>
+</mule>

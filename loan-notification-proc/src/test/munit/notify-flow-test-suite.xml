@@ -1,0 +1,1287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="notify-flow-test-suite.xml" />
+	<munit:test name="approved-decision-sends-one-email-and-records-it" description="A decision message for a APPROVED application sends one email, marks the notification SENT and writes the NOTIFIED audit step">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.template]" is="#[MunitTools::equalTo('APPROVED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="declined-decision-sends-one-email-and-records-it" description="A decision message for a DECLINED application sends one email, marks the notification SENT and writes the NOTIFIED audit step">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DECLINED', verificationRound: 1, decision: {decision: 'DECLINED', score: 38, decidingRule: 'BAND', reasonCodes: ['SCORE_BELOW_THRESHOLD', 'LOW_BUREAU_SCORE', 'MISSED_PAYMENTS']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.template]" is="#[MunitTools::equalTo('DECLINED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="referred-decision-sends-one-email-and-records-it" description="A decision message for a REFERRED application sends one email, marks the notification SENT and writes the NOTIFIED audit step">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'REFERRED', verificationRound: 1, decision: {decision: 'REFERRED', reasonCodes: ['SCORE_NEEDS_REVIEW']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.template]" is="#[MunitTools::equalTo('REFERRED')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="incomplete-application-sends-the-missing-documents-email" description="DOCUMENTS_INCOMPLETE gives the fourth outcome, built from the audit detail (AC8)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DOCUMENTS_INCOMPLETE', verificationRound: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.template]" is="#[MunitTools::equalTo('DOCUMENTS_MISSING')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="email:send" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.mail.body contains &quot;Recent payslip (PAYSLIP): 2 required, 1 found&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-received-gets-no-email" description="Only a finished outcome is announced; any other stage is skipped without creating a notification">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'RECEIVED', verificationRound: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-verifying-gets-no-email" description="Only a finished outcome is announced; any other stage is skipped without creating a notification">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'VERIFYING', verificationRound: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-verified-gets-no-email" description="Only a finished outcome is announced; any other stage is skipped without creating a notification">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'VERIFIED', verificationRound: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="application-in-scoring-gets-no-email" description="Only a finished outcome is announced; any other stage is skipped without creating a notification">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'SCORING', verificationRound: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="notification-already-sent-is-not-sent-again" description="A message delivered again finds the notification SENT and sends nothing (N21, AC13)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'SENT', attempts: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="notification-already-retrying-is-not-sent-again" description="A message delivered again finds the notification RETRYING and sends nothing (N21, AC13)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'RETRYING', attempts: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="notification-already-failed-is-not-sent-again" description="A message delivered again finds the notification FAILED and sends nothing (N21, AC13)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'FAILED', attempts: 1}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-handle-decision" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="mail-server-down-keeps-the-decision-and-marks-a-retry" description="A failed send is not an error for the message: the notification becomes RETRYING and nothing else is touched (N23)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="EMAIL:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-handle-decision" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:assert-that expression="#[vars.retryStatus]" is="#[MunitTools::equalTo('RETRYING')]" />
+			<munit-tools:assert-that expression="#[vars.sendError]" is="#[MunitTools::equalTo('EMAIL:CONNECTIVITY')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="fifth-failure-marks-the-notification-failed" description="On the fifth failure the notification becomes FAILED and an alert is logged, instead of retrying forever">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="EMAIL:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" variableName="app" />
+			<set-variable value="APPROVED" variableName="template" />
+			<set-variable value="1" variableName="round" />
+			<set-variable value="#[{id: 5, status: 'RETRYING', attempts: 4}]" variableName="notification" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-notify" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.retryStatus]" is="#[MunitTools::equalTo('FAILED')]" />
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="first-failure-stays-retrying" description="The first failure only schedules another try">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get audit trail" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{events: [{event: 'DOCUMENTS_INCOMPLETE', toStage: 'DOCUMENTS_INCOMPLETE', detail: {reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get document rules" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="EMAIL:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" variableName="app" />
+			<set-variable value="APPROVED" variableName="template" />
+			<set-variable value="1" variableName="round" />
+			<set-variable value="#[{id: 5, status: 'PENDING', attempts: 0}]" variableName="notification" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-notify" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.retryStatus]" is="#[MunitTools::equalTo('RETRYING')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="system-api-failure-after-sending-surfaces-as-an-error" description="If recording the send fails the error reaches the consumer, which retries the message (the email may then be sent twice, never lost)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="envelope" />
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Ensure notification" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{id: 5, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="HTTP:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Record notified" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark notification for retry" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-handle-decision" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('CONNECTIVITY')]" />
+			<munit-tools:verify-call processor="email:send" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send email" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="stage-decides-the-template" description="Each finished stage maps to its own template and the verification round is kept">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'REFERRED', verificationRound: 1}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-choose-template" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.template]" is="#[MunitTools::equalTo('REFERRED')]" />
+			<munit-tools:assert-that expression="#[vars.round]" is="#[MunitTools::equalTo(1)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unknown-stage-has-no-template" description="A stage that is not an outcome has no template">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'SCORING', verificationRound: 1}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-choose-template" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.template]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+</mule>

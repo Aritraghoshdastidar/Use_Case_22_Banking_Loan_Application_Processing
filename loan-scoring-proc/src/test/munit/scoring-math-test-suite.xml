@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="scoring-math-test-suite.xml" />
+	<munit:test name="instalment-follows-the-annuity-formula" description="EMI = P r (1+r)^n / ((1+r)^n - 1) with r = annual rate / 1200, rounded to 2 decimals">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+import * from modules::scoring
+output application/json
+---
+{
+	a: emi(500000, 12, 36),
+	b: emi(200000, 12, 24),
+	c: emi(1000, 12, 12),
+	d: emi(120000, 0, 12)
+}]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.a]" is="#[MunitTools::equalTo(16607.15)]" />
+			<munit-tools:assert-that expression="#[payload.b]" is="#[MunitTools::equalTo(9414.69)]" />
+			<munit-tools:assert-that expression="#[payload.c]" is="#[MunitTools::equalTo(88.85)]" />
+			<munit-tools:assert-that expression="#[payload.d]" is="#[MunitTools::equalTo(10000)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="points-run-linearly-between-the-two-end-values" description="Higher is better: 0 at the low end, 100 at the high end, linear between, held outside">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+import * from modules::scoring
+output application/json
+---
+{
+	low: points(600, 600, 750),
+	high: points(750, 600, 750),
+	mid: points(675, 600, 750),
+	over: points(900, 600, 750),
+	under: points(500, 600, 750),
+	third: points(665, 600, 750)
+}]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.low]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[payload.high]" is="#[MunitTools::equalTo(100)]" />
+			<munit-tools:assert-that expression="#[payload.mid]" is="#[MunitTools::equalTo(50)]" />
+			<munit-tools:assert-that expression="#[payload.over]" is="#[MunitTools::equalTo(100)]" />
+			<munit-tools:assert-that expression="#[payload.under]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[payload.third]" is="#[MunitTools::equalTo(43.33)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="points-also-work-when-lower-is-better" description="Debt-to-income and repayment history award full points at the low value">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+import * from modules::scoring
+output application/json
+---
+{
+	dtiBad: points(0.6, 0.6, 0.3),
+	dtiGood: points(0.3, 0.6, 0.3),
+	dtiMid: points(0.45, 0.6, 0.3),
+	dtiAbove: points(0.8, 0.6, 0.3),
+	dtiBelow: points(0.2, 0.6, 0.3),
+	missed3: points(3, 3, 0),
+	missed0: points(0, 3, 0),
+	missed1: points(1, 3, 0)
+}]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.dtiBad]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[payload.dtiGood]" is="#[MunitTools::equalTo(100)]" />
+			<munit-tools:assert-that expression="#[payload.dtiMid]" is="#[MunitTools::equalTo(50)]" />
+			<munit-tools:assert-that expression="#[payload.dtiAbove]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[payload.dtiBelow]" is="#[MunitTools::equalTo(100)]" />
+			<munit-tools:assert-that expression="#[payload.missed3]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[payload.missed0]" is="#[MunitTools::equalTo(100)]" />
+			<munit-tools:assert-that expression="#[payload.missed1]" is="#[MunitTools::equalTo(66.67)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="contribution-is-weight-times-points" description="contribution = weight x points / 100, rounded to 2 decimals">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+import * from modules::scoring
+output application/json
+---
+{
+	a: contribution(35, 43.33),
+	b: contribution(15, 100),
+	c: contribution(20, 81.13)
+}]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.a]" is="#[MunitTools::equalTo(15.17)]" />
+			<munit-tools:assert-that expression="#[payload.b]" is="#[MunitTools::equalTo(15)]" />
+			<munit-tools:assert-that expression="#[payload.c]" is="#[MunitTools::equalTo(16.23)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="age-at-maturity-counts-completed-years" description="Birthday not yet reached at the end of the loan counts one year less">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+import * from modules::scoring
+output application/json
+---
+{
+	long: ageAtMaturity('1970-01-01', |2026-11-06|, 240),
+	beforeBirthday: ageAtMaturity('1990-12-31', |2026-11-06|, 24),
+	afterBirthday: ageAtMaturity('1990-01-01', |2026-11-06|, 24),
+	sameDay: ageAtMaturity('1990-11-06', |2026-11-06|, 24)
+}]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.long]" is="#[MunitTools::equalTo(76)]" />
+			<munit-tools:assert-that expression="#[payload.beforeBirthday]" is="#[MunitTools::equalTo(37)]" />
+			<munit-tools:assert-that expression="#[payload.afterBirthday]" is="#[MunitTools::equalTo(38)]" />
+			<munit-tools:assert-that expression="#[payload.sameDay]" is="#[MunitTools::equalTo(38)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="largest-affordable-amount-is-a-multiple-of-the-step" description="The reduced amount is the largest multiple of 1,000 whose instalment fits, or 0">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+import * from modules::scoring
+output application/json
+---
+{
+	a: maxAffordableAmount(15000, 12, 36, 1000),
+	b: maxAffordableAmount(1500, 12, 24, 1000),
+	none: maxAffordableAmount(10, 12, 24, 1000),
+	fits: emi(maxAffordableAmount(15000, 12, 36, 1000), 12, 36) <= 15000,
+	oneMore: emi(maxAffordableAmount(15000, 12, 36, 1000) + 1000, 12, 36) > 15000
+}]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.a]" is="#[MunitTools::equalTo(451000)]" />
+			<munit-tools:assert-that expression="#[payload.b]" is="#[MunitTools::equalTo(31000)]" />
+			<munit-tools:assert-that expression="#[payload.none]" is="#[MunitTools::equalTo(0)]" />
+			<munit-tools:assert-that expression="#[payload.fits]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.oneMore]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="identity-numbers-are-masked-in-failure-text" description="The pattern used to hide an identity number in an error message">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{ masked: "HTTP GET on resource /bureau/reports/ABCDE1234F failed" replace /[A-Z]{5}[0-9]{4}[A-Z]/ with "[masked]" }]]></ee:set-payload></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.masked]" is="#[MunitTools::equalTo('HTTP GET on resource /bureau/reports/[masked] failed')]" />
+		</munit:validation>
+	</munit:test>
+</mule>

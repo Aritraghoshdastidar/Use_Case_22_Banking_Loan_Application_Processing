@@ -1,0 +1,956 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="file-checks-test-suite.xml" />
+	<munit:test name="valid-pdf-passes-the-content-check" description="A real PDF with its end marker passes">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_1.pdf'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<set-variable value="255044462d312e340a" variableName="headHex" />
+			<set-variable value="0a2525454f460a" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="executable-renamed-to-pdf-is-unsupported" description="A file starting with MZ is not a PDF whatever its name says (AC5)">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_2.pdf'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<set-variable value="4d5a9000" variableName="headHex" />
+			<set-variable value="00" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="pdf-without-end-marker-is-unreadable" description="A PDF cut short has no end marker and is treated as corrupt">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_2.pdf'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<set-variable value="255044462d312e340a" variableName="headHex" />
+			<set-variable value="0a312030206f626a" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::equalTo('EMPTY_OR_UNREADABLE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="valid-png-passes" description="A PNG with the IEND chunk passes when the checklist allows images">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'id_proof.png'}]" variableName="file" />
+			<set-variable value="#[{docType: 'ID_PROOF', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxSizeBytes: 5242880}]" variableName="rule" />
+			<set-variable value="89504e470d0a1a0a0000" variableName="headHex" />
+			<set-variable value="0000000049454e44ae426082" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="valid-jpeg-passes" description="A JPEG that ends with the end-of-image marker passes">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'id_proof.jpg'}]" variableName="file" />
+			<set-variable value="#[{docType: 'ID_PROOF', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxSizeBytes: 5242880}]" variableName="rule" />
+			<set-variable value="ffd8ffe000104a46" variableName="headHex" />
+			<set-variable value="1234ffd9" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="jpeg-named-as-png-is-unsupported" description="The content type must agree with the extension">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'id_proof.png'}]" variableName="file" />
+			<set-variable value="#[{docType: 'ID_PROOF', allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxSizeBytes: 5242880}]" variableName="rule" />
+			<set-variable value="ffd8ffe000104a46" variableName="headHex" />
+			<set-variable value="1234ffd9" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="pdf-content-where-only-images-are-allowed" description="A type that is not on the checklist for this document is refused">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_1.pdf'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedMimeTypes: ['image/png']}]" variableName="rule" />
+			<set-variable value="255044462d312e340a" variableName="headHex" />
+			<set-variable value="0a2525454f460a" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="empty-first-block-is-unsupported" description="Nothing readable at the start of the file">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_1.pdf'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<set-variable value="" variableName="headHex" />
+			<set-variable value="" variableName="tailHex" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/content-check.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="allowed-extension-passes" description="pdf is on the checklist">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_1.pdf'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-extension" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="extension-check-ignores-case" description="PDF in capitals is the same extension">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_1.PDF'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-extension" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::nullValue()]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="disallowed-extension-is-unsupported" description="An executable name is refused before anything is read">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_1.exe'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-extension" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="no-extension-is-unsupported" description="A name with no extension is refused">
+		<munit:behavior>
+			<set-variable value="#[{fileName: 'payslip_1'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-extension" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-within-the-limit-passes" description="A payslip under 2 MB passes the size check">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 5000, contentType: 'application/pdf'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-size" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:assert-that expression="#[vars.actualSize]" is="#[MunitTools::equalTo(5000)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-above-the-limit-is-too-large" description="A payslip over 2 MB is FILE_TOO_LARGE, judged from metadata (N9)">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 3105617, contentType: 'application/pdf'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-size" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::equalTo('FILE_TOO_LARGE')]" />
+			<munit-tools:assert-that expression="#[vars.actualSize]" is="#[MunitTools::equalTo(3105617)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-exactly-at-the-limit-passes" description="The limit itself is allowed">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 2097152, contentType: 'application/pdf'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-size" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:assert-that expression="#[vars.actualSize]" is="#[MunitTools::equalTo(2097152)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="zero-length-file-is-unreadable" description="An empty file is quarantined">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<set-variable value="#[{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]" variableName="rule" />
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 0, contentType: 'application/pdf'}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-check-size" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.reason]" is="#[MunitTools::equalTo('EMPTY_OR_UNREADABLE')]" />
+			<munit-tools:assert-that expression="#[vars.actualSize]" is="#[MunitTools::equalTo(0)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="old-unchanged-file-is-stable" description="A file older than the quiet period whose size matches the last sighting is verified">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[218]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-check-stable" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:verify-call processor="os:store" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="first-sighting-of-an-old-file-is-stable" description="No earlier snapshot is fine for a file that has been there a while">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-check-stable" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:verify-call processor="os:store" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-written-just-now-is-not-stable" description="A file whose modification time is inside the quiet period raises a temporary error (N14)">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2999-01-01T00:00:00.000'}]" variableName="file" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-check-stable" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('UNSTABLE_FILE')]" />
+			<munit-tools:verify-call processor="os:store" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-whose-size-changed-is-not-stable" description="A size different from the last sighting means the upload is still going (N14)">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[100]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-check-stable" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::equalTo('UNSTABLE_FILE')]" />
+			<munit-tools:verify-call processor="os:store" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-hash-is-sha-256-in-hex" description="The digest of the content is SHA-256 in lower-case hex">
+		<munit:behavior>
+			<set-variable value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" variableName="file" />
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-hash-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.sha256]" is="#[MunitTools::equalTo('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="good-file-is-accepted-with-a-digest" description="A valid PDF is accepted and hashed">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[{key: 'staging/f/payslip_1.pdf', fileName: 'payslip_1.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" mediaType="application/java" />
+			</munit:set-event>
+			<set-variable value="#[{rules: [{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 218}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('255044462d312e340a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read last block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('0a2525454f460a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('ACCEPTED')]" />
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:verify-call processor="s3:head-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="wrong-extension-reads-nothing" description="The extension is judged first: no metadata, no bytes read">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[{key: 'staging/f/payslip_1.exe', fileName: 'payslip_1.exe', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" mediaType="application/java" />
+			</munit:set-event>
+			<set-variable value="#[{rules: [{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 218}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('255044462d312e340a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read last block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('0a2525454f460a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('QUARANTINED')]" />
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+			<munit-tools:verify-call processor="s3:head-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="oversized-file-is-never-read" description="An oversized file is stopped by its metadata: not even the first block is read (N9)">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[{key: 'staging/f/payslip_2.pdf', fileName: 'payslip_2.pdf', docType: 'PAYSLIP', size: 3105617, lastModified: '2020-01-01T00:00:00.000'}]" mediaType="application/java" />
+			</munit:set-event>
+			<set-variable value="#[{rules: [{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 3105617}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('255044462d312e340a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read last block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('0a2525454f460a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('QUARANTINED')]" />
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::equalTo('FILE_TOO_LARGE')]" />
+			<munit-tools:verify-call processor="s3:head-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="empty-file-is-never-read" description="A zero-length file is stopped by its metadata">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[{key: 'staging/f/payslip_2.pdf', fileName: 'payslip_2.pdf', docType: 'PAYSLIP', size: 0, lastModified: '2020-01-01T00:00:00.000'}]" mediaType="application/java" />
+			</munit:set-event>
+			<set-variable value="#[{rules: [{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 0}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('255044462d312e340a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read last block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('0a2525454f460a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('QUARANTINED')]" />
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::equalTo('EMPTY_OR_UNREADABLE')]" />
+			<munit-tools:verify-call processor="s3:head-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="renamed-executable-is-not-hashed" description="A file with the wrong content is refused after the first bytes and never read through">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[{key: 'staging/f/payslip_2.pdf', fileName: 'payslip_2.pdf', docType: 'PAYSLIP', size: 53, lastModified: '2020-01-01T00:00:00.000'}]" mediaType="application/java" />
+			</munit:set-event>
+			<set-variable value="#[{rules: [{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 53}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('4d5a9000')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read last block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('00')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('QUARANTINED')]" />
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::equalTo('UNSUPPORTED_TYPE')]" />
+			<munit-tools:verify-call processor="s3:head-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="truncated-file-is-not-hashed" description="A file with no end marker is refused and never read through">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[{key: 'staging/f/payslip_2.pdf', fileName: 'payslip_2.pdf', docType: 'PAYSLIP', size: 8, lastModified: '2020-01-01T00:00:00.000'}]" mediaType="application/java" />
+			</munit:set-event>
+			<set-variable value="#[{rules: [{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 8}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('255044462d312e340a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read last block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('0a312030206f626a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('QUARANTINED')]" />
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::equalTo('EMPTY_OR_UNREADABLE')]" />
+			<munit-tools:verify-call processor="s3:head-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="file-missing-at-read-time-is-unreadable" description="A file that disappears between the listing and the read is unreadable">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[{key: 'staging/f/payslip_2.pdf', fileName: 'payslip_2.pdf', docType: 'PAYSLIP', size: 218, lastModified: '2020-01-01T00:00:00.000'}]" mediaType="application/java" />
+			</munit:set-event>
+			<set-variable value="#[{rules: [{docType: 'PAYSLIP', allowedExtensions: ['pdf'], allowedMimeTypes: ['application/pdf'], maxSizeBytes: 2097152}]}]" variableName="rules" />
+			<set-variable value="#[{applicationId: 'APP-2026-000001'}]" variableName="app" />
+			<munit-tools:mock-when processor="os:retrieve">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Retrieve size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[-1]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="os:store">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Store size snapshot" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:head-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{contentLength: 218}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="S3:NO_SUCH_KEY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read last block" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- dw::core::Binaries::fromHex('0a2525454f460a')]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="s3:get-object">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[output application/octet-stream --- 'abc' as Binary]" mediaType="application/octet-stream" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-validate-file" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('QUARANTINED')]" />
+			<munit-tools:assert-that expression="#[payload.reason]" is="#[MunitTools::equalTo('EMPTY_OR_UNREADABLE')]" />
+			<munit-tools:verify-call processor="s3:head-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get file metadata" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read first block" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="s3:get-object" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Read file" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+</mule>

@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="email-templates-test-suite.xml" />
+	<munit:test name="approved-email-states-the-terms-and-next-steps" description="An approval gives the amount, term, rate, instalment, how long the offer is open and what to do next (FR19)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-approved.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.subject contains &quot;APP-2026-000001&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.subject contains &quot;approved&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Dear Asha Verma,&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Approved amount: 200,000.00&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Term: 24 months&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Interest rate: 12.00% a year&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Monthly instalment: 9,414.69&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;valid until 6 December 2026&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;What happens next&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;personal loan&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;you requested&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="reduced-approval-states-the-reduction-and-why" description="When less than requested is approved the email says so and gives the reason (AC10)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 451000, approvedTenure: 36, approvedRatePct: 12, instalment: 14979.65, requestedAmount: 500000, reductionReason: 'AFFORDABILITY_REDUCED', offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED', 'AFFORDABILITY_REDUCED']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-approved.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Approved amount: 451,000.00&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;You requested 500,000.00&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;less than you asked for&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;monthly instalment on that amount&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="declined-email-gives-plain-reasons-and-the-right-to-review" description="A decline gives its main reasons in plain language and how to ask for a review (FR19)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DECLINED', verificationRound: 1, decision: {decision: 'DECLINED', score: 38, decidingRule: 'BAND', reasonCodes: ['SCORE_BELOW_THRESHOLD', 'LOW_BUREAU_SCORE', 'MISSED_PAYMENTS']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-declined.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;not able to approve&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;lower standing than we require&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Payments on other credit were missed&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;did not meet our lending criteria&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;right to ask for the decision to be reviewed&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;loan.review@loan-platform.local&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;within 30 days&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="declined-email-never-shows-scores-or-rule-names" description="No internal score, threshold, rule id or factor name appears in a decline (N24)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DECLINED', verificationRound: 1, decision: {decision: 'DECLINED', score: 38, decidingRule: 'BAND', reasonCodes: ['SCORE_BELOW_THRESHOLD', 'LOW_BUREAU_SCORE', 'MISSED_PAYMENTS']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-declined.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;hp-&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;score&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;bureau&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;score_&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;missed_payments&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;threshold&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;38&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.subject) contains &quot;score&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="hard-rule-hp-01-is-explained-without-naming-it" description="A hard-rule decline is explained in plain words and the rule id stays internal">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DECLINED', verificationRound: 1, decision: {decision: 'DECLINED', decidingRule: 'HP-01', reasonCodes: ['HP-01']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-declined.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;pass the maximum age&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;hp-01&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;rule&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="hard-rule-hp-02-is-explained-without-naming-it" description="A hard-rule decline is explained in plain words and the rule id stays internal">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DECLINED', verificationRound: 1, decision: {decision: 'DECLINED', decidingRule: 'HP-02', reasonCodes: ['HP-02']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-declined.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;default is recorded&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;hp-02&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;rule&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="hard-rule-hp-03-is-explained-without-naming-it" description="A hard-rule decline is explained in plain words and the rule id stays internal">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DECLINED', verificationRound: 1, decision: {decision: 'DECLINED', decidingRule: 'HP-03', reasonCodes: ['HP-03']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-declined.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;repayment would be too high&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;hp-03&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;rule&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="repeated-reasons-are-listed-once" description="Reason codes that mean the same thing give one sentence">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DECLINED', verificationRound: 1, decision: {decision: 'DECLINED', reasonCodes: ['SOMETHING_NEW', 'SCORE_BELOW_THRESHOLD']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-declined.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload.body splitBy &quot;did not meet our lending criteria&quot;)]" is="#[MunitTools::equalTo(2)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="referred-email-gives-the-expected-timescale" description="A referral says when to expect an answer (FR19)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'REFERRED', verificationRound: 1, decision: {decision: 'REFERRED', decidingRule: 'BAND', reasonCodes: ['SCORE_NEEDS_REVIEW']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-referred.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.subject contains &quot;under review&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;within 3 working days&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;underwriter&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;do not need to do anything&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="referral-for-missing-data-does-not-reveal-the-internal-reason" description="The internal reason DATA_UNAVAILABLE stays internal">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'REFERRED', verificationRound: 1, decision: {decision: 'REFERRED', decidingRule: 'DATA_UNAVAILABLE', reasonCodes: ['DATA_UNAVAILABLE']}}]" variableName="app" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-referred.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;data_unavailable&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;bureau&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="missing-documents-email-names-the-type-required-and-found" description="The email names each missing type with the required and found counts (AC3, FR19)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DOCUMENTS_INCOMPLETE', verificationRound: 1}]" variableName="app" />
+			<set-variable value="#[{reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}]" variableName="incomplete" />
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" variableName="rules" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-documents-missing.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.subject contains &quot;Documents needed&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Recent payslip (PAYSLIP): 2 required, 1 found&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;payslip_2.pdf was listed in your application but we could not find it&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;id_proof.pdf was not accepted: the file is larger than the size allowed&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;payslip_3.pdf has the same content as another file&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="missing-documents-email-says-how-to-supply-them" description="It says where to put the files, how to resubmit without a new application, and what need not be sent again (FR10, FR19)">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DOCUMENTS_INCOMPLETE', verificationRound: 1}]" variableName="app" />
+			<set-variable value="#[{reason: 'MISSING_DOCUMENTS', folder: 'applicant-folder', round: 1, missing: [{docType: 'PAYSLIP', required: 2, found: 1}], missingFiles: [{fileName: 'payslip_2.pdf', docType: 'PAYSLIP'}], quarantined: [{fileName: 'id_proof.pdf', docType: 'ID_PROOF', reason: 'FILE_TOO_LARGE'}], duplicates: [{fileName: 'payslip_3.pdf', docType: 'PAYSLIP'}]}]" variableName="incomplete" />
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" variableName="rules" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-documents-missing.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;same upload folder you used before (applicant-folder)&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;http://localhost:8702/api/applications/APP-2026-000001/resubmit&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;You do not need to apply again&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;already accepted do not need to be sent again&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;/applications/APP-2026-000001/status&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="absent-folder-is-explained" description="When no folder was found the applicant is told, and every required type is still listed">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DOCUMENTS_INCOMPLETE', verificationRound: 1}]" variableName="app" />
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" variableName="rules" />
+			<set-variable value="#[{reason: 'FOLDER_NOT_FOUND', missing: [{docType: 'ID_PROOF', required: 1, found: 0}, {docType: 'PAYSLIP', required: 2, found: 0}]}]" variableName="incomplete" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-documents-missing.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;could not find the upload folder&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Government photo identity document (ID_PROOF): 1 required, 0 found&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Recent payslip (PAYSLIP): 2 required, 0 found&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="manifest-mismatch-is-explained" description="A different declared count or checksum is described without internal terms">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DOCUMENTS_INCOMPLETE', verificationRound: 1}]" variableName="app" />
+			<set-variable value="#[{rules: [{docType: 'ID_PROOF', description: 'Government photo identity document'}, {docType: 'PAYSLIP', description: 'Recent payslip'}]}]" variableName="rules" />
+			<set-variable value="#[{reason: 'MANIFEST_MISMATCH', mismatch: {declaredCount: 5, foundCount: 4, countMatches: false, checksumMismatches: [{fileName: 'id_proof.pdf', declared: 'aa', found: 'bb'}]}}]" variableName="incomplete" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-documents-missing.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;You declared 5 documents but we found 4&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;id_proof.pdf does not match the checksum you declared&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;manifest_mismatch&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unknown-document-type-falls-back-to-its-code" description="A type with no description is still named">
+		<munit:behavior>
+			<set-variable value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'DOCUMENTS_INCOMPLETE', verificationRound: 1}]" variableName="app" />
+			<set-variable value="#[{rules: []}]" variableName="rules" />
+			<set-variable value="#[{missing: [{docType: 'PROPERTY_DOCUMENT', required: 1, found: 0}]}]" variableName="incomplete" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-documents-missing.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.body contains &quot;PROPERTY_DOCUMENT (PROPERTY_DOCUMENT): 1 required, 0 found&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="digest-lists-referred-applications-with-age-and-amount" description="The underwriting digest gives each referred application with its amount and how long it has waited (FR20)">
+		<munit:behavior>
+			<set-variable value="#[[{applicationId: 'APP-2026-000092', productCode: 'PL', requestedAmount: 300000, ageMinutes: 54}, {applicationId: 'APP-2026-000090', productCode: 'HL', requestedAmount: 1500000, ageMinutes: 3000}]]" variableName="digestRows" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-digest.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.subject contains &quot;2 referred applications awaiting a decision&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;APP-2026-000092 | personal loan | requested 300,000.00 | waiting 54 minutes&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;APP-2026-000090 | home loan | requested 1,500,000.00 | waiting 2 days&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;Total: 2&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[lower(payload.body) contains &quot;asha&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="digest-subject-is-singular-for-one" description="One waiting application reads naturally">
+		<munit:behavior>
+			<set-variable value="#[[{applicationId: 'APP-2026-000092', productCode: 'PL', requestedAmount: 300000, ageMinutes: 90}]]" variableName="digestRows" />
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/email-digest.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.subject contains &quot;1 referred application awaiting&quot;]" is="#[MunitTools::equalTo(true)]" />
+			<munit-tools:assert-that expression="#[payload.body contains &quot;waiting 1 hour&quot;]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+</mule>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="main-flow-test-suite.xml" />
+	<munit:test name="requests-are-logged-and-routed" description="Every request goes to the APIkit router after being logged with its correlation id">
+		<munit:behavior>
+			<munit-tools:mock-when processor="apikit:router">
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{ok: true}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+				<munit:attributes value="#[{method: 'GET', requestPath: '/api/health'}]" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="loan-intake-exp-api-main-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="apikit:router" times="1">
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[payload.ok]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+</mule>

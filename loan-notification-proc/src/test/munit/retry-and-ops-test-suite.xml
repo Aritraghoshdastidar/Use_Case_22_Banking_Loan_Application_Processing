@@ -1,0 +1,501 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+	<munit:config name="retry-and-ops-test-suite.xml" />
+	<munit:test name="only-due-notifications-are-retried" description="Waits grow with each failure (10 s, 30 s, 70 s ...); a fresh PENDING row waits a minute in case its message is still being handled; FAILED rows are left alone">
+		<munit:behavior>
+			<set-variable value="none" variableName="x" />
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'RETRYING', attempts: 1, ageSeconds: 10}, {id: 2, applicationId: 'APP-2026-000002', template: 'DECLINED', round: 1, status: 'RETRYING', attempts: 2, ageSeconds: 29}, {id: 3, applicationId: 'APP-2026-000003', template: 'REFERRED', round: 1, status: 'PENDING', attempts: 0, ageSeconds: 60}, {id: 4, applicationId: 'APP-2026-000004', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0, ageSeconds: 59}, {id: 5, applicationId: 'APP-2026-000005', template: 'APPROVED', round: 1, status: 'FAILED', attempts: 5, ageSeconds: 9999}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload)]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload[0].id]" is="#[MunitTools::equalTo(1)]" />
+			<munit-tools:assert-that expression="#[payload[1].id]" is="#[MunitTools::equalTo(3)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-1-failures-at-9-seconds-is-not-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 1, ageSeconds: 9}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-1-failures-at-10-seconds-is-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 1, ageSeconds: 10}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-2-failures-at-29-seconds-is-not-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 2, ageSeconds: 29}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-2-failures-at-30-seconds-is-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 2, ageSeconds: 30}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-3-failures-at-69-seconds-is-not-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 3, ageSeconds: 69}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-3-failures-at-70-seconds-is-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 3, ageSeconds: 70}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-4-failures-at-149-seconds-is-not-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 4, ageSeconds: 149}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="backoff-after-4-failures-at-150-seconds-is-due" description="The gap before the next try doubles each time">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[[{id: 1, status: 'RETRYING', attempts: 4, ageSeconds: 150}]]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<ee:transform doc:name="Transform Message"><ee:message><ee:set-payload resource="dwl/due-notifications.dwl" /></ee:message></ee:transform>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(payload) == 1]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="failed-publish-of-a-json-row-is-still-recorded" description="The row arrives as JSON from the system API. Logging the failure must not trip over mixing that with the error type, or the failure is never recorded">
+		<munit:behavior>
+			<munit:set-event>
+				<munit:payload value="#[output application/json --- {messageId: '11111111-1111-4111-8111-111111111111', queue: 'loan.verify.q', payload: {messageId: '11111111-1111-4111-8111-111111111111', correlationId: '22222222-2222-4222-8222-222222222222', applicationId: 'APP-2026-000001', 'type': 'VERIFY_REQUESTED', attempt: 1}, attempts: 0}]" mediaType="application/json" />
+			</munit:set-event>
+			<munit-tools:mock-when processor="amqp:publish">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Publish" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="AMQP:PUBLISHING" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark failed" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark sent" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-publish-outbox-row" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark failed" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Mark sent" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="retry-schedule-runs-the-retry-step" description="Each tick of the schedule looks for due notifications">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-retry-due" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="notification-retry-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-retry-due" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="due-notifications-are-handed-to-the-retry-step" description="Every due row is retried; the others are not">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get unsent notifications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 1, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'RETRYING', attempts: 1, ageSeconds: 10}, {id: 2, applicationId: 'APP-2026-000002', template: 'DECLINED', round: 1, status: 'RETRYING', attempts: 2, ageSeconds: 29}, {id: 3, applicationId: 'APP-2026-000003', template: 'REFERRED', round: 1, status: 'PENDING', attempts: 0, ageSeconds: 60}, {id: 4, applicationId: 'APP-2026-000004', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0, ageSeconds: 59}, {id: 5, applicationId: 'APP-2026-000005', template: 'APPROVED', round: 1, status: 'FAILED', attempts: 5, ageSeconds: 9999}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-retry-one" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-retry-due" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-retry-one" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="one-failing-retry-does-not-stop-the-others" description="An error on one row is logged and the next row is still tried">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get unsent notifications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 1, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'RETRYING', attempts: 1, ageSeconds: 10}, {id: 2, applicationId: 'APP-2026-000002', template: 'DECLINED', round: 1, status: 'RETRYING', attempts: 2, ageSeconds: 29}, {id: 3, applicationId: 'APP-2026-000003', template: 'REFERRED', round: 1, status: 'PENDING', attempts: 0, ageSeconds: 60}, {id: 4, applicationId: 'APP-2026-000004', template: 'APPROVED', round: 1, status: 'PENDING', attempts: 0, ageSeconds: 59}, {id: 5, applicationId: 'APP-2026-000005', template: 'APPROVED', round: 1, status: 'FAILED', attempts: 5, ageSeconds: 9999}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-retry-one" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:error typeId="EMAIL:CONNECTIVITY" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<try doc:name="Try"><flow-ref name="sf-retry-due" /><error-handler><on-error-continue><set-variable value="#[error.errorType.identifier]" variableName="caught" /></on-error-continue></error-handler></try>
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.caught]" is="#[MunitTools::nullValue()]" />
+			<munit-tools:verify-call processor="mule:flow-ref" times="2">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-retry-one" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="retry-uses-the-stored-template-not-the-stage" description="The email is rebuilt for the notification that failed, loading its application again">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[{applicationId: 'APP-2026-000001', correlationId: '22222222-2222-4222-8222-222222222222', applicantName: 'Asha Verma', productCode: 'PL', email: 'asha@example.com', stage: 'APPROVED', verificationRound: 1, decision: {decision: 'APPROVED', approvedAmount: 200000, approvedTenure: 24, approvedRatePct: 12, instalment: 9414.69, requestedAmount: 200000, offerExpiresAt: '2026-12-06T10:00:00Z', reasonCodes: ['SCORE_APPROVED']}}]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-notify" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[{id: 7, applicationId: 'APP-2026-000001', template: 'APPROVED', round: 1, status: 'RETRYING', attempts: 2}]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-retry-one" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[vars.template]" is="#[MunitTools::equalTo('APPROVED')]" />
+			<munit-tools:assert-that expression="#[vars.notification.id]" is="#[MunitTools::equalTo(7)]" />
+			<munit-tools:verify-call processor="mule:flow-ref" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-notify" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:verify-call processor="http:request" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get application" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+	<munit:test name="alert-fires-for-notifications-waiting-too-long" description="Notifications older than the alert threshold are counted; a fresh one is not">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get unsent notifications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 1, applicationId: 'APP-2026-000001', template: 'APPROVED', status: 'RETRYING', attempts: 2, ageSeconds: 300}, {id: 2, applicationId: 'APP-2026-000002', template: 'DECLINED', status: 'FAILED', attempts: 5, ageSeconds: 900}, {id: 3, applicationId: 'APP-2026-000003', template: 'APPROVED', status: 'PENDING', attempts: 0, ageSeconds: 5}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="unnotified-alert-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(vars.overdue)]" is="#[MunitTools::equalTo(2)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="no-alert-when-nothing-is-overdue" description="Nothing waiting too long, nothing to alert">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get unsent notifications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 3, status: 'PENDING', attempts: 0, ageSeconds: 5}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="unnotified-alert-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[sizeOf(vars.overdue)]" is="#[MunitTools::equalTo(0)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="unnotified-list-shows-what-is-waiting-without-personal-data" description="Operators see application ids, outcome, status, attempts and age only (AC14)">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get unsent notifications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{id: 1, applicationId: 'APP-2026-000001', template: 'APPROVED', status: 'RETRYING', attempts: 2, ageSeconds: 300}, {id: 2, applicationId: 'APP-2026-000002', template: 'DECLINED', status: 'FAILED', attempts: 5, ageSeconds: 900}, {id: 3, applicationId: 'APP-2026-000003', template: 'APPROVED', status: 'PENDING', attempts: 0, ageSeconds: 5}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="unnotified-endpoint-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.count]" is="#[MunitTools::equalTo(3)]" />
+			<munit-tools:assert-that expression="#[payload.notifications[1].status]" is="#[MunitTools::equalTo('FAILED')]" />
+			<munit-tools:assert-that expression="#[payload.notifications[0].ageSeconds]" is="#[MunitTools::equalTo(300)]" />
+			<munit-tools:assert-that expression="#[(payload.notifications[0] pluck $$) contains &quot;email&quot;]" is="#[MunitTools::equalTo(false)]" />
+			<munit-tools:assert-that expression="#[(payload.notifications[0] pluck $$) contains &quot;lastError&quot;]" is="#[MunitTools::equalTo(false)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="digest-is-sent-when-applications-are-referred" description="Referred applications are emailed to underwriting, oldest first (FR20)">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get referred applications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{applicationId: 'APP-2026-000092', productCode: 'PL', requestedAmount: 300000, ageMinutes: 54}, {applicationId: 'APP-2026-000090', productCode: 'HL', requestedAmount: 1500000, ageMinutes: 3000}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send digest" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-send-digest" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send digest" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.digestSent]" is="#[MunitTools::equalTo('true')]" />
+			<munit-tools:assert-that expression="#[vars.digestRows[0].applicationId]" is="#[MunitTools::equalTo('APP-2026-000090')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="no-digest-when-nothing-is-waiting" description="An empty digest is not sent">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get referred applications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send digest" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="sf-send-digest" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="email:send" times="0">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send digest" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+			<munit-tools:assert-that expression="#[vars.digestSent]" is="#[MunitTools::equalTo('false')]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="digest-endpoint-reports-what-it-did" description="The on-demand endpoint answers with the count and whether the email went out">
+		<munit:behavior>
+			<munit-tools:mock-when processor="http:request">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Get referred applications" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[[{applicationId: 'APP-2026-000092', productCode: 'PL', requestedAmount: 300000, ageMinutes: 54}, {applicationId: 'APP-2026-000090', productCode: 'HL', requestedAmount: 1500000, ageMinutes: 3000}]]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit-tools:mock-when processor="email:send">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="doc:name" whereValue="Send digest" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="digest-endpoint-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:assert-that expression="#[payload.referred]" is="#[MunitTools::equalTo(2)]" />
+			<munit-tools:assert-that expression="#[payload.sent]" is="#[MunitTools::equalTo(true)]" />
+		</munit:validation>
+	</munit:test>
+	<munit:test name="scheduled-digest-runs-the-same-step" description="The daily schedule uses the same digest step">
+		<munit:behavior>
+			<munit-tools:mock-when processor="mule:flow-ref">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-send-digest" />
+				</munit-tools:with-attributes>
+				<munit-tools:then-return>
+					<munit-tools:payload value="#[null]" mediaType="application/java" />
+				</munit-tools:then-return>
+			</munit-tools:mock-when>
+			<munit:set-event>
+				<munit:payload value="#[null]" mediaType="application/java" />
+			</munit:set-event>
+		</munit:behavior>
+		<munit:execution>
+			<flow-ref name="digest-schedule-flow" />
+		</munit:execution>
+		<munit:validation>
+			<munit-tools:verify-call processor="mule:flow-ref" times="1">
+				<munit-tools:with-attributes>
+					<munit-tools:with-attribute attributeName="name" whereValue="sf-send-digest" />
+				</munit-tools:with-attributes>
+			</munit-tools:verify-call>
+		</munit:validation>
+	</munit:test>
+</mule>

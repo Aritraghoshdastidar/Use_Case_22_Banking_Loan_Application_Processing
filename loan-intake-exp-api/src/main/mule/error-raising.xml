@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<sub-flow name="sf-raise-app-error">
+		<choice doc:name="Choice">
+			<when expression="#[vars.appError == 'NOT_FOUND']">
+				<raise-error doc:name="Raise error" type="APP:NOT_FOUND" description="#[vars.appErrorMessage default 'Resource not found']" />
+			</when>
+			<when expression="#[vars.appError == 'CONFLICT']">
+				<raise-error doc:name="Raise error" type="APP:CONFLICT" description="#[vars.appErrorMessage default 'Request conflicts with current state']" />
+			</when>
+			<when expression="#[vars.appError == 'UNPROCESSABLE']">
+				<raise-error doc:name="Raise error" type="APP:UNPROCESSABLE" description="#[vars.appErrorMessage default 'Request cannot be processed']" />
+			</when>
+			<when expression="#[vars.appError == 'UNAVAILABLE']">
+				<raise-error doc:name="Raise error" type="APP:UNAVAILABLE" description="#[vars.appErrorMessage default 'Dependency unavailable']" />
+			</when>
+			<otherwise>
+				<raise-error doc:name="Raise error" type="APP:BAD_REQUEST" description="#[vars.appErrorMessage default 'Bad request']" />
+			</otherwise>
+		</choice>
+	</sub-flow>
+</mule>
