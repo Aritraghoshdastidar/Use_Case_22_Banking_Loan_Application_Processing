@@ -1,0 +1,50 @@
+# Render blueprint for the website (customer portal and staff console).
+# Values marked sync: false are entered in the Render dashboard; nothing secret is stored in this repository.
+services:
+  - type: web
+    name: marigold-finance
+    runtime: node
+    plan: free
+    branch: frontend-web
+    rootDir: web
+    buildCommand: node --version
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: WEB_ENV
+        value: cloud
+      - key: WEB_SECURE_COOKIE
+        value: "1"
+      - key: WEB_TRUST_PROXY
+        value: "1"
+      - key: WEB_HIDE_LOCAL
+        value: "1"
+      - key: WEB_STAFF_PASSWORD
+        sync: false
+      - key: CLOUD_SYSTEM_API_URL
+        sync: false
+      - key: CLOUD_INTAKE_API_URL
+        sync: false
+      - key: CLOUD_DOCUMENT_URL
+        sync: false
+      - key: CLOUD_SCORING_URL
+        sync: false
+      - key: CLOUD_NOTIFICATION_URL
+        sync: false
+      - key: INTAKE_CLIENT_ID
+        sync: false
+      - key: INTAKE_CLIENT_SECRET
+        sync: false
+      - key: AMQP_HOST
+        sync: false
+      - key: AMQP_VHOST
+        sync: false
+      - key: AMQP_USER
+        sync: false
+      - key: AMQP_PASSWORD
+        sync: false
+    # The free plan has no persistent disk: customer accounts are lost when the service restarts or wakes from sleep
+    # (the two staff accounts are created again from WEB_STAFF_PASSWORD). For lasting accounts use a paid plan and add:
+    #   disk: { name: web-data, mountPath: /var/data, sizeGB: 1 }   with   WEB_DATA_DIR=/var/data

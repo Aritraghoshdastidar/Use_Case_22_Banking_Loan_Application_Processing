@@ -80,9 +80,12 @@ add('POST', '/api/auth/register', null, async (c) => {
   return send(c.res, 201, { user: { id: Number(r.lastInsertRowid), name, email, role: 'customer' } });
 });
 
+// Behind a hosting proxy the socket address is the proxy's; WEB_TRUST_PROXY=1 uses the first x-forwarded-for entry instead.
+const clientIp = (req) => (process.env.WEB_TRUST_PROXY === '1' && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress;
+
 add('POST', '/api/auth/login', null, async (c) => {
   const b = await readJson(c.req);
-  const email = String(b.email || '').trim().toLowerCase(); const key = c.req.socket.remoteAddress + '|' + email;
+  const email = String(b.email || '').trim().toLowerCase(); const key = clientIp(c.req) + '|' + email;
   if (tooManyMisses(key)) return send(c.res, 429, { code: 'TOO_MANY_ATTEMPTS', message: 'Too many wrong passwords. Try again in ten minutes.' });
   const u = q.userByEmail.get(email);
   if (!u || !checkPassword(String(b.password || ''), u.password_hash)) { recordMiss(key); return send(c.res, 401, { code: 'BAD_LOGIN', message: 'Email or password is not right.' }); }

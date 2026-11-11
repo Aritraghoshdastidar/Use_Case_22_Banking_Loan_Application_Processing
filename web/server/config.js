@@ -69,4 +69,7 @@ if (s.CLOUD_INTAKE_API_URL && s.CLOUD_SYSTEM_API_URL) {
   };
 }
 
+// When hosted online there is no local stack to talk to, so the Local option is removed.
+if (process.env.WEB_HIDE_LOCAL === '1' && environments.cloud) delete environments.local;
+
 export const defaultEnv = process.env.WEB_ENV && environments[process.env.WEB_ENV] ? process.env.WEB_ENV : (environments.cloud ? 'cloud' : 'local');

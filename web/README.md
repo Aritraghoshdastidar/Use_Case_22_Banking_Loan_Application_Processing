@@ -25,6 +25,17 @@ or, from the repository root, `powershell -File scripts\run-web.ps1 -Env cloud` 
 - **Staff** accounts are created on the first start, with random passwords, and written to `web/data/initial-credentials.txt` (git-ignored). Set `WEB_STAFF_PASSWORD` before the first start to choose one password for both. Delete `web/data/web.db` to start over.
 - The loan system itself has no user accounts, so the site keeps its own small database (`web/data/web.db`, SQLite) of accounts, sessions and which application belongs to which customer.
 
+## Put it online (Render)
+
+The site is a small Node server, so it needs a host that runs one (Vercel and GitHub Pages serve static files only). [render.yaml](../render.yaml) describes the service for Render.
+
+1. Run `powershell -File scripts\make-render-env.ps1`. It writes `render-web.env` in your home folder with only the settings the site needs (CloudHub addresses, API client id and secret, broker login, a staff password).
+2. On render.com: New > Blueprint > pick this repository and the `frontend-web` branch. Render reads `render.yaml`.
+3. When asked for the values, open Environment and use Add from .env to paste the file, then delete the file.
+4. Open the address Render gives you. Staff sign in with `priya.raman@marigold.example` or `ops@marigold.example` and the staff password from the file.
+
+The free plan has no disk and sleeps when idle: the first visit takes about half a minute, and customer accounts are lost when the service restarts (the staff accounts are created again). Use a paid plan with a disk (see the end of `render.yaml`) to keep customers. Only the CloudHub backend is available online.
+
 ## What a customer can do
 
 1. **Apply**: details (checked on the page, then again by the intake API), documents, review, submit. The answer is a real reference with a status page.
