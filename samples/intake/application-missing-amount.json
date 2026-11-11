@@ -1,0 +1,36 @@
+{
+  "requestId": "SAMPLE-INTAKE-0001",
+  "productCode": "PL",
+  "tenureMonths": 36,
+  "applicant": {
+    "fullName": "Asha Rao",
+    "dateOfBirth": "1992-03-14",
+    "identityRef": "ABCDE1234F",
+    "email": "asha.rao@example.com",
+    "monthlyIncome": 90000,
+    "monthlyObligations": 15000,
+    "employmentMonths": 40
+  },
+  "documents": {
+    "folder": "complete-ok",
+    "documentCount": 4,
+    "documents": [
+      {
+        "fileName": "id_proof.pdf",
+        "type": "ID_PROOF"
+      },
+      {
+        "fileName": "address_proof.pdf",
+        "type": "ADDRESS_PROOF"
+      },
+      {
+        "fileName": "payslip_1.pdf",
+        "type": "PAYSLIP"
+      },
+      {
+        "fileName": "payslip_2.pdf",
+        "type": "PAYSLIP"
+      }
+    ]
+  }
+}
