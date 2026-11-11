@@ -31,6 +31,8 @@ Get-ChildItem $root -Directory | Remove-Item -Recurse -Force
 
 # AC 2: complete set (use for APPROVED / DECLINED / REFERRED demos too)
 Add-Complete 'complete-ok'
+# Home loan: the same set plus the property document (HL needs PROPERTY_DOCUMENT)
+Save 'complete-ok' 'property_document.pdf' (New-Pdf 'complete-ok property')
 # Scenario 8 / AC 3: one payslip where two required
 Save 'missing-payslip' 'id_proof.pdf'      (New-Pdf 'mp id')
 Save 'missing-payslip' 'address_proof.pdf' (New-Pdf 'mp address')

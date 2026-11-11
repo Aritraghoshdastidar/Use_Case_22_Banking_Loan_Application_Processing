@@ -1,0 +1,14 @@
+{
+  "name": "marigold-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Customer portal and staff console for the loan application processing system",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node server/index.js",
+    "check": "node --check server/index.js && node --check server/upstream.js && node --check server/auth.js && node --check server/store.js && node --check server/domain.js && node --check server/config.js && node --check client/app.js && node --check client/customer.js && node --check client/staff.js && node --check client/util.js",
+    "smoke": "node test/smoke.mjs",
+    "ui": "node test/ui.mjs"
+  }
+}
