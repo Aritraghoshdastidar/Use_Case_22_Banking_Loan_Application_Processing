@@ -1,0 +1,28 @@
+app:
+  name: "loan-scoring-proc"
+http:
+  listener:
+    host: "0.0.0.0"
+    port: "8704"
+    basePath: "/api/*"
+system:
+  api:
+    host: "localhost"
+    port: "8701"
+    protocol: "HTTP"
+    basePath: "/api"
+    timeoutMillis: "10000"
+amqp:
+  host: "localhost"
+  port: "5672"
+  virtualHost: "/"
+  user: "loan"
+  exchange: "loan.exchange"
+consumer:
+  name: "scoring-proc"
+  queue: "loan.score.q"
+retry:
+  baseMillis: "2000"
+  maxRetries: "3"
+cache:
+  referenceTtlSeconds: "60"
