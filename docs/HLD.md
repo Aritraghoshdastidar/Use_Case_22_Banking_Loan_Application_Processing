@@ -245,6 +245,18 @@ Templates: **APPROVED** (amount, term, rate, instalment, offer expiry, next step
 - The document inventory save checks the application exists **inside** the same transaction as the writes. Reading outside a transaction and then opening one would hold two connections per request and exhaust the pool under concurrent calls; a burst of 20 simultaneous saves is part of the smoke test.
 - Request logging masks identity numbers (the bureau mock takes the number in the path for simplicity; a real bureau integration would use a request body).
 
+### 4.6 Website: customer portal and staff console (`web/`)
+
+Not part of the five Mule applications; it is a client of them. A small Node server (no dependencies) and a single-page browser app.
+
+- **Why a server of its own:** the Mule APIs send no CORS headers, and the API client credentials of the policies must never reach a browser. The server holds the credentials, calls the intake, document, system and notification apps, reads the broker's management API for queue depths and dead letters, and reads the mail catcher in Local mode.
+- **Accounts:** the loan system has no user accounts, so the site keeps its own SQLite database of accounts (scrypt hashes), sessions (hashed tokens in an `HttpOnly` cookie) and which application belongs to which customer. Roles: customer, underwriter, operations.
+- **Customer journey:** apply (the application id the intake API receives is built from the account and a draft id, so a double submit is idempotent), upload through the document upload gate, then a live tracker built from the decision audit; a missing-documents application is fixed on the same reference by uploading and resubmitting. The customer view shows decisions in plain language with no scores or rule ids.
+- **Staff console:** live health of the five apps, queues and dead letters, outbox, unnotified decisions, applications by stage, an application drawer (scorecard factors summing to the score, hard rules, documents with digests, audit trail), actions (supply a file and resubmit, send the digest, replay dead letters, bureau switch) and, in Local mode only, stopping and starting the mail server and the broker. Every staff action is recorded.
+- **Proof mode:** requirement chips on the screens open the requirement, the tests that guarantee it, and the real calls the page made with the loan system's own status, timing and correlation id.
+- **Environment switch:** one site, two backends (Local, CloudHub), chosen by the server and switchable by staff.
+- **Limits:** no manual underwriting decision (the loan system keeps one decision per application and has no review operation); the customer's email is shown in Local mode only.
+
 ## 5. Messaging design
 
 | Queue | Dead-letter queue | Producer | Consumer | Message type |
@@ -482,6 +494,7 @@ All 24 required negative scenarios and the additional ones are listed with their
 | 2026-11-06 | 0.4 | Document verification design refined; connector pins |
 | 2026-11-09 | 0.5 | Optional upload gate in the document app, adapted from a teammate's Google Drive version |
 | 2026-11-09 | **1.0** | Final: all five apps built, 386 unit tests at 100% coverage, deployed to CloudHub 2.0, API Manager registration and policies for three APIs, full requirements traceability |
+| 2026-11-10 | 1.1 | Website added (`web/`): customer portal and staff console on top of the system, with its own accounts, live tracker, staff actions and proof mode |
 
 ---
 

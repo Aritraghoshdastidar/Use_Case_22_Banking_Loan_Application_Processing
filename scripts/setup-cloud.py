@@ -299,6 +299,10 @@ def cmd_urls(s):
             updates['CLOUD_INTAKE_API_URL'] = url.rstrip('/') + '/api'
         if url and item['name'] == 'loan-document-proc':
             updates['CLOUD_DOCUMENT_URL'] = url.rstrip('/') + '/api'
+        if url and item['name'] == 'loan-scoring-proc':
+            updates['CLOUD_SCORING_URL'] = url.rstrip('/') + '/api'
+        if url and item['name'] == 'loan-notification-proc':
+            updates['CLOUD_NOTIFICATION_URL'] = url.rstrip('/') + '/api'
     if updates:
         s.update(updates)
         print('stored: ' + ', '.join(updates))

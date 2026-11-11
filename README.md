@@ -124,6 +124,17 @@ powershell -File scripts\run-chain.ps1 -Stop
 | `scripts\smoke-email.ps1` | all four applicant emails through MailHog, retries, mail-server outage. Stops the mail server on purpose, run it alone |
 | `scripts\smoke-resilience.ps1` | resume after a missing document, live checklist change, broker outage. Stops RabbitMQ on purpose, run it alone; runs less than two minutes apart interfere through the checklist caches |
 
+## Website: customer portal and staff console
+
+A real website sits on top of the system (folder `web/`, no packages to install, Node 22.13 or later). Customers create an account, apply, upload documents through the checking gate, and watch their application move to a decision; staff sign in to a console that reads the running apps and acts on them (supply a missing document and resubmit, replay dead letters, turn the bureau off, and in Local mode stop the mail server or broker to prove the resilience requirements).
+
+```powershell
+powershell -File scripts\run-web.ps1 -Env local      # the Docker stack and apps from run-chain.ps1
+powershell -File scripts\run-web.ps1 -Env cloud      # your CloudHub deployment (settings from ~/.anypoint-cloud.env)
+```
+
+Open http://localhost:3000. Staff passwords are written to `web/data/initial-credentials.txt` on the first start. Full guide, security notes and the browser test: [web/README.md](web/README.md).
+
 ## 4. Deploy it to your own CloudHub 2.0 account
 
 Everything runs in your own accounts, with your own credentials. Nothing in this repository belongs to anyone else's account, and nobody needs to share a password: create the free accounts below and fill in one settings file.
