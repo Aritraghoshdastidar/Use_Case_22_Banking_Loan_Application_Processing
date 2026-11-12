@@ -365,4 +365,4 @@ On the free plan the service sleeps when idle and customer accounts are lost whe
 
 ## Credits
 
-Built solo by [@Aritraghoshdastidar](https://github.com/Aritraghoshdastidar) for the Cognizant NPN Hackathon. The idea of checking uploaded files before storing them was adapted from Member 3's Google Drive version of the document app. "Marigold Finance" is a fictional lender used for the demonstration website; it is not a real financial institution.
+Built for the Cognizant NPN Hackathon. The idea of checking uploaded files before storing them was adapted from Member 3's Google Drive version of the document app. "Marigold Finance" is a fictional lender used for the demonstration website; it is not a real financial institution.
