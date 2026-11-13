@@ -1,0 +1,284 @@
+
+#%RAML 1.0
+title: Loan Scoring Process API
+description: >
+  API for submitting loan applications for credit scoring
+  and retrieving loan scoring decisions.
+version: v1
+protocols:
+  - HTTP
+baseUri: http://localhost:8704/api
+mediaType: application/json
+
+types:
+
+  ScoreRequest:
+    type: object
+    additionalProperties: false
+    properties:
+      applicationId:
+        type: string
+        minLength: 1
+        example: "APP-10001"
+      correlationId:
+        type: string
+        required: false
+        example: "CORR-10001"
+
+  ScoreSubmission:
+    type: object
+    properties:
+      messageId: string
+      applicationId: string
+      status:
+        type: string
+        enum: [ACCEPTED]
+      message: string
+      correlationId: string
+
+  FactorHit:
+    type: object
+    properties:
+      factor:
+        type: string
+        enum:
+          - BUREAU_SCORE
+          - DEBT_TO_INCOME
+          - LOAN_TO_INCOME
+          - EMPLOYMENT_STABILITY
+          - REPAYMENT_HISTORY
+      value: number
+      weight: number
+      points: number
+      contribution: number
+
+  RuleHit:
+    type: object
+    properties:
+      ruleCode:
+        type: string
+        enum:
+          - HP-01
+          - HP-02
+          - HP-03
+          - DATA_UNAVAILABLE
+      triggered: boolean
+      description: string
+
+  LoanOffer:
+    type: object
+    properties:
+      approvedAmount: number
+      approvedTenureMonths: integer
+      interestRate: number
+      monthlyInstallment: number
+      reductionReason:
+        type: string
+        required: false
+        example: AFFORDABILITY_REDUCED
+      offerExpiresAt: datetime
+
+  ScoreDecision:
+    type: object
+    properties:
+      applicationId: string
+      decision:
+        type: string
+        enum: [APPROVED, REFERRED, DECLINED]
+      score:
+        type: number
+        required: false
+        minimum: 0
+        maximum: 100
+      scorecardVersion:
+        type: string
+        required: false
+      decidingRule: string
+      reasonCodes:
+        type: array
+        items: string
+      requestedAmount: number
+      affordabilityRatio:
+        type: number
+        required: false
+      factors:
+        type: array
+        items: FactorHit
+        required: false
+      ruleHits:
+        type: array
+        items: RuleHit
+      offer:
+        type: LoanOffer
+        required: false
+      sourceApp: string
+      correlationId: string
+
+  ScoreStatus:
+    type: object
+    properties:
+      applicationId: string
+      status:
+        type: string
+        enum: [PENDING, SCORING, COMPLETED]
+      decision:
+        type: ScoreDecision
+        required: false
+      message: string
+
+  ErrorResponse:
+    type: object
+    properties:
+      code: string
+      message: string
+      correlationId: string
+      timestamp:
+        type: datetime
+        required: false
+
+/score:
+  post:
+    displayName: Submit Loan for Scoring
+    description: >
+      Accepts an application ID and initiates the scoring
+      process by publishing a SCORE_REQUESTED event.
+    body:
+      application/json:
+        type: ScoreRequest
+        example:
+          applicationId: "APP-10001"
+          correlationId: "CORR-10001"
+    responses:
+      202:
+        description: Scoring request accepted.
+        body:
+          application/json:
+            type: ScoreSubmission
+            example:
+              messageId: "550e8400-e29b-41d4-a716-446655440000"
+              applicationId: "APP-10001"
+              status: ACCEPTED
+              message: "Loan scoring request accepted."
+              correlationId: "CORR-10001"
+      400:
+        description: Invalid request.
+        body:
+          application/json:
+            type: ErrorResponse
+            example:
+              code: BAD_REQUEST
+              message: "Invalid scoring request."
+              correlationId: "CORR-10001"
+      404:
+        description: Application not found.
+        body:
+          application/json:
+            type: ErrorResponse
+            example:
+              code: APPLICATION_NOT_FOUND
+              message: "Loan application not found."
+              correlationId: "CORR-10001"
+      409:
+        description: Scoring request already submitted.
+        body:
+          application/json:
+            type: ErrorResponse
+            example:
+              code: DUPLICATE_REQUEST
+              message: "Scoring request already exists."
+              correlationId: "CORR-10001"
+      503:
+        description: Scoring service unavailable.
+        body:
+          application/json:
+            type: ErrorResponse
+            example:
+              code: SERVICE_UNAVAILABLE
+              message: "Scoring service temporarily unavailable."
+              correlationId: "CORR-10001"
+
+/score/{applicationId}:
+  uriParameters:
+    applicationId:
+      type: string
+      required: true
+      example: "APP-10001"
+  get:
+    displayName: Get Scoring Decision
+    description: >
+      Retrieves the current scoring status or completed
+      loan decision for an application.
+    responses:
+      200:
+        description: Scoring status or completed decision.
+        body:
+          application/json:
+            type: ScoreStatus
+            example:
+              applicationId: "APP-10001"
+              status: COMPLETED
+              message: "Loan scoring completed."
+              decision:
+                applicationId: "APP-10001"
+                decision: APPROVED
+                score: 100
+                scorecardVersion: "1.0"
+                decidingRule: BAND
+                reasonCodes:
+                  - SCORE_APPROVED
+                requestedAmount: 200000
+                affordabilityRatio: 0.1177
+                factors:
+                  - factor: BUREAU_SCORE
+                    value: 780
+                    weight: 35
+                    points: 100
+                    contribution: 35
+                ruleHits:
+                  - ruleCode: HP-01
+                    triggered: false
+                    description: "Age at maturity within limit."
+                  - ruleCode: HP-02
+                    triggered: false
+                    description: "No active default."
+                  - ruleCode: HP-03
+                    triggered: false
+                    description: "Loan is affordable."
+                offer:
+                  approvedAmount: 200000
+                  approvedTenureMonths: 24
+                  interestRate: 12
+                  monthlyInstallment: 9414.69
+                  offerExpiresAt: "2026-12-13T10:00:00Z"
+                sourceApp: loan-scoring-proc
+                correlationId: "CORR-10001"
+      404:
+        description: Application or scoring record not found.
+        body:
+          application/json:
+            type: ErrorResponse
+            example:
+              code: NOT_FOUND
+              message: "Scoring record not found."
+              correlationId: "CORR-10001"
+      503:
+        description: System API unavailable.
+        body:
+          application/json:
+            type: ErrorResponse
+            example:
+              code: SERVICE_UNAVAILABLE
+              message: "Unable to retrieve scoring result."
+              correlationId: "CORR-10001"
+
+/health:
+  get:
+    displayName: Health Check
+    description: Checks whether the scoring application is running.
+    responses:
+      200:
+        body:
+          application/json:
+            example:
+              status: UP
+              app: loan-scoring-proc
